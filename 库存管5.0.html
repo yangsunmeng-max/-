@@ -1,0 +1,3479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>库存管理</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #1677ff;
+            --bg-body: #f0f2f5;
+            --border: #e5e6eb;
+            --text-main: #1d2129;
+            --text-sub: #86909c;
+            --danger: #f53f3f;
+            --success: #00b42a;
+            --warning: #ff7d00;
+            --radius: 4px;
+            --header-height: 110px;
+            /* 搜索区高度 */
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            font-size: 13px;
+            min-height: 100vh;
+        }
+
+        /* ==================== Zone 1: 扁平化搜索区 ==================== */
+        .filter-zone {
+            background: #fff;
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            z-index: 20;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
+        }
+
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            /* 5列布局 */
+            gap: 12px 20px;
+            align-items: end;
+        }
+
+        .input-item {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .input-item label {
+            font-size: 12px;
+            color: var(--text-sub);
+            font-weight: 500;
+        }
+
+        .form-input {
+            height: 32px;
+            padding: 4px 10px;
+            border: 1px solid #c9cdd4;
+            border-radius: var(--radius);
+            font-size: 13px;
+            color: var(--text-main);
+            width: 100%;
+            transition: 0.2s;
+        }
+
+        .form-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+            outline: none;
+        }
+
+        .btn-group {
+            grid-column: 5;
+            /* 放在最后一列 */
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .btn {
+            height: 32px;
+            padding: 0 20px;
+            border-radius: var(--radius);
+            cursor: pointer;
+            border: none;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            background: #4096ff;
+        }
+
+        .btn-secondary {
+            background: #f2f3f5;
+            color: var(--text-main);
+            border: 1px solid #e5e6eb;
+        }
+
+        .btn-secondary:hover {
+            background: #e5e6eb;
+        }
+
+        /* ==================== Zone 2: 动态高度驾驶舱 ==================== */
+        .dashboard-zone {
+            background: #fff;
+            margin-top: 12px;
+            flex-shrink: 0;
+            border-bottom: 1px solid var(--border);
+            transition: height 0.35s ease;
+            /* 高度动画 */
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+       /* 状态A: KPI视图 (收起图表) - 高度由 360 改为 420 */
+        .dashboard-zone.mode-kpi {
+            height: 420px; /* 修改这里：足够容纳 2 行 KPI 卡片 + 底部按钮 */
+        }
+
+        /* 状态A: KPI视图 (展开图表) - 高度由 680 改为 740 */
+        .dashboard-zone.mode-kpi.chart-expanded {
+            height: 740px; /* 修改这里：基础高度 + 图表区域高度 */
+        }
+
+        /* 状态C: 汇总表视图 (中等) */
+        .dashboard-zone.mode-summary {
+            height: 340px;
+        }
+
+        .tabs-header {
+            display: flex;
+            padding: 0 24px;
+            border-bottom: 1px solid var(--border);
+            background: #fff;
+            height: 44px;
+        }
+
+        .tab-btn {
+            padding: 0 20px;
+            line-height: 44px;
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--text-sub);
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tab-btn:hover {
+            color: var(--primary);
+        }
+
+        .tab-btn.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+            font-weight: 600;
+        }
+
+        .tab-content {
+            padding: 16px 24px;
+            flex: 1;
+            overflow: visible;
+            position: relative;
+            background: #fafafa;
+        }
+
+        .tab-pane {
+            display: none;
+            height: 100%;
+            width: 100%;
+        }
+
+        .tab-pane.active {
+            display: block;
+        }
+
+        /* --- Tab 1: 左右平权 KPI --- */
+        .kpi-wrapper {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            flex-shrink: 0;
+            overflow: visible;
+        }
+
+        .kpi-card {
+            background: #fff;
+            border: 1px solid #e5e6eb;
+            border-radius: 6px;
+            padding: 12px 16px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+            position: relative;
+            overflow: visible;
+            height: 140px;
+        }
+
+        /* 中间分割线 */
+        .kpi-card::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 25%;
+            bottom: 25%;
+            width: 1px;
+            background: #f0f0f0;
+        }
+
+        .kpi-header {
+            font-size: 12px;
+            color: var(--text-sub);
+            margin-bottom: 8px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .kpi-body {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 8px;
+        }
+
+        .kpi-part {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .kpi-part.right {
+            align-items: flex-end;
+        }
+
+        /* 右侧右对齐 */
+
+        .kpi-val {
+            font-family: 'DIN Alternate', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-main);
+            line-height: 1.1;
+        }
+
+        .kpi-unit {
+            font-size: 11px;
+            color: #999;
+            margin-left: 2px;
+            font-weight: normal;
+        }
+
+        .kpi-label {
+            font-size: 11px;
+            color: #999;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* Tooltip styles */
+        .tooltip-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 10px;
+            font-weight: 600;
+            cursor: help;
+            position: relative;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
+        }
+
+        .tooltip-icon:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+        }
+
+        .tooltip-content {
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 12px;
+            line-height: 1.5;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            pointer-events: none;
+            z-index: 1000;
+            box-shadow: 0 8px 16px rgba(102, 126, 234, 0.3);
+            font-weight: 500;
+        }
+
+        .tooltip-content::before {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 6px solid transparent;
+            border-top-color: #764ba2;
+        }
+
+        .tooltip-icon:hover .tooltip-content {
+            opacity: 1;
+            visibility: visible;
+            bottom: calc(100% + 12px);
+        }
+
+        /* For right-aligned labels, adjust tooltip position */
+        .kpi-part.right .tooltip-content {
+            left: auto;
+            right: 0;
+            transform: none;
+        }
+
+        .kpi-part.right .tooltip-content::before {
+            left: auto;
+            right: 10px;
+            transform: none;
+        }
+
+        .kpi-footer {
+            display: flex;
+            gap: 40px;
+            font-size: 11px;
+            color: #666;
+            border-top: 1px dashed #f0f0f0;
+            padding-top: 8px;
+            margin-top: auto;
+        }
+
+        .footer-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .kpi-footer-stacked {
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .footer-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+        }
+
+        .footer-label {
+            color: #999;
+            font-size: 11px;
+        }
+
+        .footer-value {
+            font-family: 'DIN Alternate', sans-serif;
+            font-weight: 600;
+            color: var(--text-main);
+            font-size: 11px;
+        }
+
+        .footer-days {
+            color: #999;
+            font-weight: 400;
+        }
+
+        /* 时间维度切换器 */
+        .time-dimension-switcher {
+            display: flex;
+            gap: 8px;
+            margin-left: auto;
+            align-items: center;
+        }
+
+        .time-btn {
+            padding: 6px 16px;
+            font-size: 13px;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            background: #fff;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .time-btn:hover {
+            border-color: #1677ff;
+            color: #1677ff;
+        }
+
+        .time-btn.active {
+            background: #1677ff;
+            border-color: #1677ff;
+            color: #fff;
+        }
+
+      /* === 修复后的 KPI 内部布局 (Version 2 - 解决间距过大问题) === */
+        
+        /* 1. 容器：左对齐+间距 */
+        .kpi-body {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start; 
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        /* 2. 分组：让左右两组平分空间 */
+        .kpi-group {
+            display: flex;
+            align-items: center;
+            flex: 1;          /* 关键：让每个组占据 50% 空间 */
+            min-width: 0;
+            gap: 8px;         /* 关键：控制 数值 和 趋势图 之间的紧密距离 */
+        }
+
+        /* 移除之前可能存在的中间分割线 */
+        .kpi-card::after {
+            display: none;
+        }
+
+        /* 3. 数值区域：【关键修改】取消 flex:1，改为 flex:none */
+        /* 这样文字区域就会紧紧包裹内容，不会把图表推到最右边 */
+        .kpi-amount, 
+        .kpi-days {
+            display: flex;
+            flex-direction: column;
+            flex: none;       /* 禁止自动拉伸 */
+            width: auto;      /* 宽度由内容决定 */
+            padding: 0;
+            margin: 0;
+        }
+
+        /* 标签样式复用 */
+        .kpi-amount-label,
+        .kpi-days-label {
+            font-size: 11px;
+            color: #999;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* 数值样式复用 */
+        .kpi-amount-value {
+            font-family: 'DIN Alternate', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            color: #1677ff;
+            line-height: 1.1;
+            white-space: nowrap;
+        }
+        
+        .kpi-days-value {
+            font-family: 'DIN Alternate', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            color: #ff7a45;
+            line-height: 1.1;
+            white-space: nowrap;
+        }
+
+        .kpi-amount-value small,
+        .kpi-days-value small {
+            font-size: 12px;
+            color: #999;
+            font-weight: normal;
+            margin-left: 2px;
+        }
+
+        /* 4. 趋势图：保持固定宽度 */
+        .kpi-amount-trend, 
+        .kpi-days-trend {
+            width: 60px !important;    
+            min-width: 60px;
+            height: 40px;              
+            flex-shrink: 0;            
+            margin: 0;
+            padding: 0;
+        }
+        
+        /* 确保 canvas 填满容器 */
+        .kpi-amount-trend canvas,
+        .kpi-days-trend canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        /* --- Tab 2: 图表 (高高度) --- */
+        .charts-container {
+            display: flex;
+            height: 100%;
+            gap: 16px;
+        }
+
+        /* 图表展开/收起按钮 */
+        .chart-toggle-bar {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 8px 0;
+            margin-top: 12px;
+            cursor: pointer;
+            border-top: 1px dashed #e5e6eb;
+            transition: all 0.2s ease;
+        }
+
+        .chart-toggle-bar:hover {
+            background: #f5f7fa;
+        }
+
+        .chart-toggle-text {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--primary);
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .chart-toggle-icon {
+            font-size: 12px;
+            transition: transform 0.3s ease;
+        }
+
+        .chart-toggle-icon.expanded {
+            transform: rotate(180deg);
+        }
+
+        /* 可折叠图表面板 */
+        .chart-panel {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.35s ease-out, margin-top 0.35s ease-out, opacity 0.25s ease-out;
+            opacity: 0;
+            margin-top: 0;
+        }
+
+        .chart-panel.expanded {
+            max-height: 320px;
+            opacity: 1;
+            margin-top: 12px;
+        }
+
+        .chart-panel .charts-container {
+            height: 280px;
+        }
+
+        .chart-box {
+            flex: 1;
+            background: #fff;
+            border: 1px solid #e5e6eb;
+            border-radius: 4px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            height: 30px;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
+        .chart-title {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .chart-body {
+            flex: 1;
+            min-height: 0;
+        }
+
+        .time-switch {
+            display: flex;
+            background: #f2f3f5;
+            border-radius: 4px;
+            padding: 2px;
+        }
+
+        .time-opt {
+            padding: 2px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            color: #666;
+            border-radius: 2px;
+        }
+
+        .time-opt.active {
+            background: #fff;
+            color: var(--primary);
+            font-weight: 600;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        /* --- Tab 3: 汇总表 --- */
+        .summary-container {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .summary-toolbar {
+            padding: 8px 12px;
+            background: #fafafa;
+            border-bottom: 1px solid #e5e6eb;
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .summary-wrapper {
+            flex: 1;
+            overflow: auto;
+            background: #fff;
+            border: 1px solid #e5e6eb;
+            border-radius: 4px;
+            position: relative;
+        }
+
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 800px;
+        }
+
+        .summary-table th,
+        .summary-table td {
+            padding: 12px 16px;
+            text-align: center;
+            border: 1px solid #f0f0f0;
+        }
+
+        .summary-table th {
+            background: #f7f8fa;
+            color: var(--primary);
+            font-weight: 600;
+            white-space: nowrap;
+            position: sticky;
+            top: 0;
+            z-index: 3;
+        }
+
+        .summary-table tr:hover td {
+            background: #f2f3f5;
+        }
+
+        /* ==================== Zone 3: 全量字段列表 ==================== */
+        .list-zone {
+            background: #fff;
+            margin-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+
+        .list-toolbar {
+            padding: 10px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .list-title {
+            font-weight: 600;
+            font-size: 15px;
+        }
+
+        .grid-container {
+            position: relative;
+            overflow-x: auto;
+        }
+
+        .super-table {
+            border-collapse: separate;
+            border-spacing: 0;
+            min-width: 5520px;
+            /* 品牌列从70px增加到140px，总宽度增加70px */
+        }
+
+        .super-table th {
+            background: #f7f8fa;
+            padding: 8px 10px;
+            border-bottom: 1px solid #e5e6eb;
+            border-right: 1px solid #f0f0f0;
+            font-weight: 600;
+            color: var(--text-sub);
+            text-align: center;
+            font-size: 12px;
+            white-space: nowrap;
+            position: sticky;
+            z-index: 10;
+        }
+
+        /* 二级表头：一级标题行 */
+        .super-table thead tr:first-child th {
+            top: 0;
+            border-bottom: 1px solid #e5e6eb;
+        }
+
+        /* 二级表头：二级标题行 */
+        .super-table thead tr:nth-child(2) th {
+            top: 33px;
+            font-weight: 500;
+            color: #999;
+            font-size: 11px;
+            padding: 6px 10px;
+            background: #fafbfc;
+        }
+
+        /* 一级分组标题 */
+        .group-header {
+            background: #f2f5fa !important;
+            color: var(--text-main) !important;
+            font-weight: 700 !important;
+            font-size: 12px !important;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid #d9dde4 !important;
+        }
+
+        /* 分组之间的分割线 */
+        .group-border-right {
+            border-right: 2px solid #d9dde4 !important;
+        }
+
+        .super-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #f0f0f0;
+            border-right: 1px solid #f0f0f0;
+            color: var(--text-main);
+            font-size: 13px;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+
+        .super-table tr:hover td {
+            background: #e6f7ff !important;
+        }
+
+        /* 父子行样式 */
+        .parent-row {
+            cursor: pointer;
+        }
+
+        .parent-row td {
+            background: #fff;
+            font-weight: 500;
+        }
+
+        .parent-row .sticky-col {
+            background: #fff;
+        }
+
+        .parent-row:hover td {
+            background: #e6f7ff !important;
+        }
+
+        .parent-row:hover .sticky-col {
+            background: #e6f7ff !important;
+        }
+
+        .child-row td {
+            background: #fafbfc;
+        }
+
+        .child-row:hover td {
+            background: #e6f7ff !important;
+        }
+
+        .child-row:hover .sticky-col {
+            background: #e6f7ff !important;
+        }
+
+        .child-row .col-sku,
+        .child-row .col-brand {
+            color: #999;
+        }
+
+        .child-row .sticky-col {
+            background: #fafbfc;
+        }
+
+        .child-row.hidden {
+            display: none;
+        }
+
+        .expand-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            margin-right: 6px;
+            border-radius: 3px;
+            background: #f0f0f0;
+            color: #666;
+            font-size: 10px;
+            transition: all 0.2s ease;
+        }
+
+        .expand-icon:hover {
+            background: #1677ff;
+            color: #fff;
+        }
+
+        .expand-icon.expanded {
+            transform: rotate(90deg);
+        }
+
+        /* 冻结列样式 */
+        .sticky-col {
+            position: sticky;
+            background: #fff;
+            z-index: 5;
+        }
+
+        .super-table th.sticky-col {
+            z-index: 15;
+            background: #f7f8fa;
+        }
+
+        /* 展开/收起列 */
+        .col-expand {
+            left: 0;
+            width: 36px !important;
+            min-width: 36px;
+            max-width: 36px;
+            text-align: center;
+            padding: 0 !important;
+        }
+
+        .col-img {
+            left: 36px;
+            width: 50px !important;
+            min-width: 50px;
+            max-width: 50px;
+            text-align: center;
+        }
+
+        .col-sku {
+            left: 86px;
+            width: 80px !important;
+            min-width: 80px;
+            max-width: 80px;
+        }
+
+        /* 品牌列 */
+        .col-brand {
+            left: 166px;
+            width: 140px !important;
+            min-width: 140px;
+            max-width: 140px;
+        }
+
+        /* 冻结列在二级表头中的z-index */
+        .super-table thead tr:first-child th.sticky-col {
+            z-index: 20;
+        }
+        .super-table thead tr:nth-child(2) th.sticky-col {
+            z-index: 18;
+        }
+
+        /* 特殊单元格渲染 */
+        .sku-box {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .sku-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sku-link {
+            color: var(--primary);
+            font-weight: 600;
+            text-decoration: none;
+            font-family: monospace;
+        }
+
+        .sku-link:hover {
+            text-decoration: underline;
+        }
+
+        .sku-stars {
+            color: #ffb400;
+            letter-spacing: -1px;
+            font-size: 10px;
+        }
+
+        .sku-sub {
+            font-size: 11px;
+            color: #999;
+            display: flex;
+            gap: 8px;
+        }
+
+        .progress-bar-cell {
+            width: 120px;
+            position: relative;
+            height: 20px;
+            display: flex;
+            align-items: center;
+        }
+
+        .bar-fill {
+            position: absolute;
+            left: 0;
+            height: 100%;
+            background: rgba(22, 119, 255, 0.15);
+            border-radius: 2px;
+        }
+
+        .bar-fill.right-to-left {
+            left: auto;
+            right: 0;
+        }
+
+        .bar-val {
+            position: relative;
+            z-index: 2;
+            font-family: 'DIN Alternate';
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+        }
+
+        .bar-val.right-align {
+            justify-content: flex-end;
+        }
+
+        /* 底部 */
+        .pagination-bar {
+            padding: 8px 24px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 10px;
+            font-size: 12px;
+            color: #666;
+            background: #fff;
+        }
+
+        /* 工具类 */
+        .din {
+            font-family: 'DIN Alternate', sans-serif;
+        }
+
+        .text-red {
+            color: var(--danger);
+        }
+
+        .text-green {
+            color: var(--success);
+        }
+
+        /* 库存明细区域Tab切换 */
+        .list-tabs-header {
+            display: flex;
+            gap: 0;
+            background: #fff;
+            border-bottom: 2px solid #e8e8e8;
+            padding: 0 24px;
+        }
+
+        .list-tab-btn {
+            padding: 12px 24px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            color: #666;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.3s;
+        }
+
+        .list-tab-btn:hover {
+            color: var(--primary);
+        }
+
+        .list-tab-btn.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .list-tab-content {
+            display: none;
+        }
+
+        .list-tab-content.active {
+            display: block;
+        }
+
+        /* 库存汇总二级Tab */
+        .summary-sub-tabs {
+            display: flex;
+            gap: 0;
+            background: #fafafa;
+            padding: 0 24px;
+            border-bottom: 1px solid #e8e8e8;
+        }
+
+        .summary-sub-tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #666;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            transition: all 0.3s;
+        }
+
+        .summary-sub-tab:hover {
+            color: var(--primary);
+            background: #f0f0f0;
+        }
+
+        .summary-sub-tab.active {
+            color: var(--primary);
+            background: #fff;
+            border-bottom-color: var(--primary);
+        }
+
+        .summary-dimension-content {
+            display: none;
+        }
+
+        .summary-dimension-content.active {
+            display: block;
+        }
+
+        .summary-wrapper {
+            padding: 16px 24px;
+            background: #fff;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="filter-zone">
+        <div class="filter-grid">
+            <div class="input-item">
+                <label>品牌</label>
+                <input class="form-input" placeholder="请输入品牌">
+            </div>
+            <div class="input-item">
+                <label>SKU / 型号</label>
+                <input class="form-input" placeholder="请输入sku或型号">
+            </div>
+            <div class="input-item">
+                <label>仓库</label>
+                <select class="form-input">
+                    <option>全部仓库</option>
+                    <option>华东中心仓</option>
+                    <option>东莞仓</option>
+                    <option>上银仓</option>
+                </select>
+            </div>
+            <div class="input-item">
+                <label>前台分类</label>
+                <select class="form-input">
+                    <option>全部分类</option>
+                </select>
+            </div>
+            <div class="input-item">
+                <label>系列</label>
+                <input class="form-input" placeholder="输入系列名">
+            </div>
+
+            <div class="input-item">
+                <label>成本价格组</label>
+                <select class="form-input">
+                    <option>全部</option>
+                </select>
+            </div>
+            <div class="input-item">
+                <label>产品组</label>
+                <select class="form-input">
+                    <option>全部</option>
+                </select>
+            </div>
+            <div class="input-item">
+                <label>备货类型</label>
+                <select class="form-input">
+                    <option>全部</option>
+                    <option>集采</option>
+                    <option>常规备货</option>
+                </select>
+            </div>
+            <div class="input-item">
+                <label>是否PB</label>
+                <select class="form-input">
+                    <option>全部</option>
+                    <option>是</option>
+                    <option>否</option>
+                </select>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn btn-secondary">重置</button>
+                <button class="btn btn-primary"><i class="fas fa-search"></i> 查询</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-zone mode-kpi" id="dashboard-zone">
+        <div class="tabs-header">
+            <div class="tab-btn active" onclick="setMode('kpi', this)"><i class="fas fa-tachometer-alt"></i> 核心指标</div>
+            <div class="time-dimension-switcher">
+                <div class="time-btn active" onclick="switchTimeDimension('day', this)">日</div>
+                <div class="time-btn" onclick="switchTimeDimension('week', this)">周</div>
+                <div class="time-btn" onclick="switchTimeDimension('month', this)">月</div>
+            </div>
+        </div>
+
+        <div class="tab-content">
+            <div id="view-kpi" class="tab-pane active">
+                <div class="kpi-wrapper">
+                    <!-- 总库存 -->
+                    <div class="kpi-card">
+                        <div class="kpi-header">
+                            总库存
+                            <span class="tooltip-icon">?
+                                <span class="tooltip-content">总库存 = 可用库存 + 期货在途库存</span>
+                            </span>
+                        </div>
+                        <div class="kpi-body">
+                            <div class="kpi-group">
+                                <div class="kpi-amount">
+                                    <div class="kpi-amount-label">库存金额</div>
+                                    <div class="kpi-amount-value">¥1355<small>万</small></div>
+                                </div>
+                                <div class="kpi-amount-trend" id="trend-total-amount"></div>
+                            </div>
+                            <div class="kpi-group">
+                                <div class="kpi-days">
+                                    <div class="kpi-days-label">
+                                        周转天数
+                                        <span class="tooltip-icon">?
+                                            <span class="tooltip-content">总库存周转天数 = 总库存金额 / 近7天日均销售成本</span>
+                                        </span>
+                                    </div>
+                                    <div class="kpi-days-value">47.0<small>天</small></div>
+                                </div>
+                                <div class="kpi-days-trend" id="trend-total-days"></div>
+                            </div>
+                        </div>
+                        <div class="kpi-footer"></div>
+                    </div>
+
+                    <!-- 在库库存 -->
+                    <div class="kpi-card">
+                        <div class="kpi-header">
+                            在库库存
+                            <span class="tooltip-icon">?
+                                <span class="tooltip-content">在库库存 = 仓库货架上的实物库存数量</span>
+                            </span>
+                        </div>
+                        <div class="kpi-body">
+                            <div class="kpi-group">
+                                <div class="kpi-amount">
+                                    <div class="kpi-amount-label">库存金额</div>
+                                    <div class="kpi-amount-value">¥920<small>万</small></div>
+                                </div>
+                                <div class="kpi-amount-trend" id="trend-instock-amount"></div>
+                            </div>
+                            <div class="kpi-group">
+                                <div class="kpi-days">
+                                    <div class="kpi-days-label">
+                                        周转天数
+                                        <span class="tooltip-icon">?
+                                            <span class="tooltip-content">在库库存周转天数 = 在库库存金额 / 近7天日均销售成本</span>
+                                        </span>
+                                    </div>
+                                    <div class="kpi-days-value">42.0<small>天</small></div>
+                                </div>
+                                <div class="kpi-days-trend" id="trend-instock-days"></div>
+                            </div>
+                        </div>
+                        <div class="kpi-footer">
+                            <span class="footer-item">自营在库: 520.0w/22天</span>
+                            <span class="footer-item">寄售在库: 400.0w/20天</span>
+                        </div>
+                    </div>
+
+                    <!-- 在途库存 -->
+                    <div class="kpi-card">
+                        <div class="kpi-header">
+                            在途库存
+                            <span class="tooltip-icon">?
+                                <span class="tooltip-content">在途库存 = 普通在途 + 期货在途</span>
+                            </span>
+                        </div>
+                        <div class="kpi-body">
+                            <div class="kpi-group">
+                                <div class="kpi-amount">
+                                    <div class="kpi-amount-label">库存金额</div>
+                                    <div class="kpi-amount-value">¥435<small>万</small></div>
+                                </div>
+                                <div class="kpi-amount-trend" id="trend-transit-amount"></div>
+                            </div>
+                            <div class="kpi-group">
+                                <div class="kpi-days">
+                                    <div class="kpi-days-label">
+                                        周转天数
+                                        <span class="tooltip-icon">?
+                                            <span class="tooltip-content">在途库存周转天数 = 在途库存金额 / 近7天日均销售成本</span>
+                                        </span>
+                                    </div>
+                                    <div class="kpi-days-value">12.7<small>天</small></div>
+                                </div>
+                                <div class="kpi-days-trend" id="trend-transit-days"></div>
+                            </div>
+                        </div>
+                        <div class="kpi-footer">
+                            <span class="footer-item">普通在途: 280.0w/8.5天</span>
+                            <span class="footer-item">期货在途: 155.2w/4.2天</span>
+                        </div>
+                    </div>
+
+                    <!-- 可用库存 -->
+                    <div class="kpi-card">
+                        <div class="kpi-header">
+                            可用库存
+                            <span class="tooltip-icon">?
+                                <span class="tooltip-content">可用库存 = 在库库存 + 普通在途库存 + 调拨数 - (订单占有 + 寄售占有 + 预留库存)</span>
+                            </span>
+                        </div>
+                        <div class="kpi-body">
+                            <div class="kpi-group">
+                                <div class="kpi-amount">
+                                    <div class="kpi-amount-label">库存金额</div>
+                                    <div class="kpi-amount-value">¥810<small>万</small></div>
+                                </div>
+                                <div class="kpi-amount-trend" id="trend-avail-amount"></div>
+                            </div>
+                            <div class="kpi-group">
+                                <div class="kpi-days">
+                                    <div class="kpi-days-label">
+                                        周转天数
+                                        <span class="tooltip-icon">?
+                                            <span class="tooltip-content">可用库存周转天数 = 可用库存金额 / 近7天日均销售成本</span>
+                                        </span>
+                                    </div>
+                                    <div class="kpi-days-value">32.5<small>天</small></div>
+                                </div>
+                                <div class="kpi-days-trend" id="trend-avail-days"></div>
+                            </div>
+                        </div>
+                        <!-- <div class="kpi-footer">
+                            <span class="footer-item text-red"><i class="fas fa-exclamation-circle"></i> 滞销: 120.5w</span>
+                        </div> -->
+                    </div>
+
+                    <!-- 可发库存 -->
+                    <div class="kpi-card">
+                        <div class="kpi-header">
+                            可发库存
+                            <span class="tooltip-icon">?
+                                <span class="tooltip-content">可发货库存 = 在库库存 -订单占有- 寄售占有（帮寄售商代发订单的占有+退给供应商的退货占有）</span>
+                            </span>
+                        </div>
+                        <div class="kpi-body">
+                            <div class="kpi-group">
+                                <div class="kpi-amount">
+                                    <div class="kpi-amount-label">库存金额</div>
+                                    <div class="kpi-amount-value">¥650<small>万</small></div>
+                                </div>
+                                <div class="kpi-amount-trend" id="trend-ship-amount"></div>
+                            </div>
+                            <div class="kpi-group">
+                                <div class="kpi-days">
+                                    <div class="kpi-days-label">
+                                        周转天数
+                                        <span class="tooltip-icon">?
+                                            <span class="tooltip-content">可发库存周转天数 = 可发库存金额 / 近7天日均销售成本</span>
+                                        </span>
+                                    </div>
+                                    <div class="kpi-days-value">28.0<small>天</small></div>
+                                </div>
+                                <div class="kpi-days-trend" id="trend-ship-days"></div>
+                            </div>
+                        </div>
+                        <div class="kpi-footer"></div>
+                    </div>
+
+                    <!-- 备货 -->
+                    <div class="kpi-card" style="background:#fcfcfc">
+                        <div class="kpi-header">备货</div>
+                        <div class="kpi-body">
+                            <div class="kpi-part">
+                                <div class="kpi-label">上限 (金额/周转天数)</div>
+                                <div style="font-weight:600; font-size:15px;">1,100w <span
+                                        style="font-size:11px;color:#999">/ 60天</span></div>
+                            </div>
+                            <div class="kpi-part right">
+                                <div class="kpi-label">下限 (金额/周转天数)</div>
+                                <div style="font-weight:600; font-size:15px;">300w <span
+                                        style="font-size:11px;color:#999">/ 15天</span></div>
+                            </div>
+                        </div>
+                        <div class="kpi-footer">
+                            <span class="footer-item">水位状态: <span class="text-green">正常</span></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 图表展开/收起按钮 -->
+                <div class="chart-toggle-bar" id="chart-toggle-bar" onclick="toggleChartPanel()">
+                    <span class="chart-toggle-text">
+                        <i class="fas fa-chevron-down chart-toggle-icon" id="chart-toggle-icon"></i>
+                        <span id="chart-toggle-label">展开图表分析</span>
+                    </span>
+                </div>
+
+                <!-- 可折叠的图表区域 -->
+                <div class="chart-panel" id="chart-panel">
+                    <div class="charts-container">
+                        <div class="chart-box">
+                            <div class="chart-header">
+                                <span class="chart-title" id="pie-chart-title">品牌库存金额占比</span>
+                                <div class="time-switch">
+                                    <div class="time-opt active" onclick="switchPieView('brand', this)">品牌</div>
+                                    <div class="time-opt" onclick="switchPieView('warehouse', this)">仓库</div>
+                                    <div class="time-opt" onclick="switchPieView('costgroup', this)">成本价格组</div>
+                                </div>
+                            </div>
+                            <div id="chart-pie" class="chart-body"></div>
+                        </div>
+                        <div class="chart-box">
+                            <div class="chart-header">
+                                <span class="chart-title">品牌库存分布 (TOP 10)</span>
+                            </div>
+                            <div id="chart-brands" class="chart-body"></div>
+                        </div>
+                        <div class="chart-box">
+                            <div class="chart-header">
+                                <span class="chart-title">库存趋势</span>
+                                <div class="time-switch">
+                                    <div class="time-opt">日</div>
+                                    <div class="time-opt active">周</div>
+                                    <div class="time-opt">月</div>
+                                </div>
+                            </div>
+                            <div id="chart-trend" class="chart-body"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="list-zone">
+        <!-- Tab切换 -->
+        <div class="list-tabs-header">
+            <div class="list-tab-btn active" onclick="switchListView('detail', this)">
+                <i class="fas fa-list"></i> 库存明细
+            </div>
+            <div class="list-tab-btn" onclick="switchListView('summary', this)">
+                <i class="fas fa-table"></i> 库存汇总
+            </div>
+        </div>
+
+        <!-- 库存明细Tab内容 -->
+        <div id="list-view-detail" class="list-tab-content active">
+        <div class="list-toolbar">
+            <div style="display:flex; align-items:center; gap:12px;">
+                <span style="font-weight:400; font-size:12px; color:#999;">共 1,205 条</span>
+                <button id="toggle-all-btn" class="btn btn-secondary" onclick="toggleAllExpand()" style="height:28px; font-size:12px;">
+                    <i class="fas fa-plus-square"></i> 全部展开
+                </button>
+            </div>
+            <div style="display:flex; gap:8px;">
+                <button class="btn btn-secondary" style="height:28px; font-size:12px;"><i class="fas fa-cog"></i>
+                    自定义列</button>
+                <button class="btn btn-secondary" style="height:28px; font-size:12px;"><i class="fas fa-download"></i>
+                    导出</button>
+            </div>
+        </div>
+
+        <div class="grid-container">
+            <table class="super-table" id="super-grid">
+            </table>
+        </div>
+
+        <div class="pagination-bar">
+            <span>每页显示</span>
+            <select style="border:1px solid #ccc; border-radius:4px;">
+                <option>20</option>
+                <option>50</option>
+            </select>
+            <span style="margin-left:10px;">1-20 条 / 共 1205 条</span>
+            <button class="btn btn-secondary" style="height:24px; padding:0 8px;"><i
+                    class="fas fa-angle-left"></i></button>
+            <button class="btn btn-secondary" style="height:24px; padding:0 8px;"><i
+                    class="fas fa-angle-right"></i></button>
+        </div>
+        </div>
+        <!-- 库存明细Tab内容结束 -->
+
+        <!-- 库存汇总Tab内容 -->
+        <div id="list-view-summary" class="list-tab-content">
+            <!-- 二级Tab切换 -->
+            <div class="summary-sub-tabs">
+                <div class="summary-sub-tab active" onclick="switchSummaryDimension('warehouse', this)">
+                    仓库维度
+                </div>
+                <div class="summary-sub-tab" onclick="switchSummaryDimension('brand', this)">
+                    品牌维度
+                </div>
+                <div class="summary-sub-tab" onclick="switchSummaryDimension('costgroup', this)">
+                    成本价格组维度
+                </div>
+            </div>
+
+            <!-- 工具栏 -->
+            <div class="list-toolbar" id="brand-toolbar" style="display:none;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <button id="toggle-all-brand-btn" class="btn btn-secondary" onclick="toggleAllBrandExpand()" style="height:28px; font-size:12px;">
+                        <i class="fas fa-plus-square"></i> 全部展开
+                    </button>
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button class="btn btn-secondary" style="height:28px; font-size:12px;">
+                        <i class="fas fa-download"></i> 导出
+                    </button>
+                </div>
+            </div>
+
+            <!-- 成本价格组工具栏 -->
+            <div class="list-toolbar" id="costgroup-toolbar" style="display:none;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <button id="toggle-all-costgroup-btn" class="btn btn-secondary" onclick="toggleAllCostGroupExpand()" style="height:28px; font-size:12px;">
+                        <i class="fas fa-plus-square"></i> 全部展开
+                    </button>
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button class="btn btn-secondary" style="height:28px; font-size:12px;">
+                        <i class="fas fa-download"></i> 导出
+                    </button>
+                </div>
+            </div>
+
+            <!-- 汇总表格容器 -->
+            <div class="summary-wrapper">
+                <div id="summary-warehouse" class="summary-dimension-content active">
+                    <table class="summary-table" id="warehouse-summary-table">
+                        <!-- 表格内容将通过JS生成 -->
+                    </table>
+                </div>
+                <div id="summary-brand" class="summary-dimension-content">
+                    <table class="summary-table" id="brand-summary-table">
+                        <!-- 表格内容将通过JS生成 -->
+                    </table>
+                    <!-- 分页器 -->
+                    <div class="pagination-bar" style="border-top: 1px solid #e8e8e8; margin-top: 0;">
+                        <span>每页显示</span>
+                        <select style="border:1px solid #ccc; border-radius:4px;">
+                            <option>10</option>
+                            <option>20</option>
+                        </select>
+                        <span style="margin-left:10px;">1-10 条 / 共 15 条</span>
+                        <button class="btn btn-secondary" style="height:24px; padding:0 8px;"><i
+                                class="fas fa-angle-left"></i></button>
+                        <button class="btn btn-secondary" style="height:24px; padding:0 8px;"><i
+                                class="fas fa-angle-right"></i></button>
+                    </div>
+                </div>
+                <div id="summary-costgroup" class="summary-dimension-content">
+                    <table class="summary-table" id="costgroup-summary-table">
+                        <!-- 表格内容将通过JS生成 -->
+                    </table>
+                    <!-- 分页器 -->
+                    <div class="pagination-bar" style="border-top: 1px solid #e8e8e8; margin-top: 0;">
+                        <span>每页显示</span>
+                        <select style="border:1px solid #ccc; border-radius:4px;">
+                            <option>10</option>
+                            <option>20</option>
+                        </select>
+                        <span style="margin-left:10px;">1-10 条 / 共 20 条</span>
+                        <button class="btn btn-secondary" style="height:24px; padding:0 8px;"><i
+                                class="fas fa-angle-left"></i></button>
+                        <button class="btn btn-secondary" style="height:24px; padding:0 8px;"><i
+                                class="fas fa-angle-right"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- 库存汇总Tab内容结束 -->
+    </div>
+
+    <script>
+        // === 1. 动态驾驶舱切换逻辑 ===
+        let chartPanelExpanded = false;
+        let currentTimeDimension = 'day'; // 当前时间维度：day, week, month
+
+        // 时间维度切换
+        function switchTimeDimension(dimension, btn) {
+            currentTimeDimension = dimension;
+
+            // 更新按钮状态
+            document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            // 重新渲染所有趋势图
+            initKpiTrends();
+        }
+
+        // 生成模拟趋势数据
+        function generateTrendData(dimension, baseValue, variance = 0.1) {
+            let dataPoints = [];
+            let count = dimension === 'day' ? 7 : (dimension === 'week' ? 12 : 6);
+
+            for (let i = 0; i < count; i++) {
+                let value = baseValue * (1 + (Math.random() - 0.5) * variance);
+                dataPoints.push(Math.round(value * 100) / 100);
+            }
+
+            return dataPoints;
+        }
+
+        // 生成日期标签
+        function generateDateLabels(dimension) {
+            let labels = [];
+            let today = new Date();
+
+            if (dimension === 'day') {
+                // 近7日
+                for (let i = 6; i >= 0; i--) {
+                    let date = new Date(today);
+                    date.setDate(date.getDate() - i);
+                    labels.push(date.getFullYear() + '年' + (date.getMonth() + 1) + '月' + date.getDate() + '日');
+                }
+            } else if (dimension === 'week') {
+                // 近12周
+                for (let i = 11; i >= 0; i--) {
+                    let weekNum = getWeekNumber(today) - i;
+                    if (weekNum < 1) weekNum += 52;
+                    labels.push('W' + String(weekNum).padStart(2, '0') + '周');
+                }
+            } else if (dimension === 'month') {
+                // 近6月
+                for (let i = 5; i >= 0; i--) {
+                    let date = new Date(today);
+                    date.setMonth(date.getMonth() - i);
+                    labels.push(date.getFullYear() + '年' + (date.getMonth() + 1) + '月');
+                }
+            }
+
+            return labels;
+        }
+
+        // 获取周数
+        function getWeekNumber(date) {
+            let d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+            let dayNum = d.getUTCDay() || 7;
+            d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+            let yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+            return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+        }
+
+        // 十六进制颜色转 rgba
+        function hexToRgba(hex, alpha) {
+            let r = parseInt(hex.slice(1, 3), 16);
+            let g = parseInt(hex.slice(3, 5), 16);
+            let b = parseInt(hex.slice(5, 7), 16);
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+
+        // 初始化单个趋势图
+        function initTrendChart(containerId, data, color, isAmount = true) {
+            let container = document.getElementById(containerId);
+            if (!container) return;
+
+            let chart = echarts.init(container);
+            let labels = generateDateLabels(currentTimeDimension);
+
+            let option = {
+                grid: {
+                    left: 0,
+                    right: 0,
+                    top: 5,
+                    bottom: 5
+                },
+                xAxis: {
+                    type: 'category',
+                    data: labels,
+                    show: false
+                },
+                yAxis: {
+                    type: 'value',
+                    show: false
+                },
+                tooltip: {
+                    trigger: 'axis',
+                    backgroundColor: 'rgba(0,0,0,0.75)',
+                    borderColor: 'transparent',
+                    textStyle: {
+                        color: '#fff',
+                        fontSize: 12
+                    },
+                    formatter: function(params) {
+                        let value = params[0].value;
+                        let label = params[0].name;
+                        if (isAmount) {
+                            return label + '<br/>¥' + value.toFixed(2) + ' 万';
+                        } else {
+                            return label + '<br/>' + value.toFixed(1) + ' 天';
+                        }
+                    }
+                },
+                series: [{
+                    type: 'line',
+                    data: data,
+                    smooth: true,
+                    symbol: 'none',
+                    lineStyle: {
+                        color: color,
+                        width: 2
+                    },
+                    areaStyle: {
+                        color: {
+                            type: 'linear',
+                            x: 0,
+                            y: 0,
+                            x2: 0,
+                            y2: 1,
+                            colorStops: [{
+                                offset: 0,
+                                color: hexToRgba(color, 0.08)
+                            }, {
+                                offset: 1,
+                                color: hexToRgba(color, 0.02)
+                            }]
+                        }
+                    }
+                }]
+            };
+
+            chart.setOption(option);
+
+            // 响应式
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+
+        // 初始化所有KPI趋势图
+        function initKpiTrends() {
+            // 总库存
+            initTrendChart('trend-total-amount', generateTrendData(currentTimeDimension, 1355, 0.08), '#1677ff', true);
+            initTrendChart('trend-total-days', generateTrendData(currentTimeDimension, 47, 0.1), '#ff7a45', false);
+
+            // 在库库存
+            initTrendChart('trend-instock-amount', generateTrendData(currentTimeDimension, 920, 0.08), '#1677ff', true);
+            initTrendChart('trend-instock-days', generateTrendData(currentTimeDimension, 42, 0.1), '#ff7a45', false);
+
+            // 在途库存
+            initTrendChart('trend-transit-amount', generateTrendData(currentTimeDimension, 435, 0.12), '#1677ff', true);
+            initTrendChart('trend-transit-days', generateTrendData(currentTimeDimension, 12.7, 0.15), '#ff7a45', false);
+
+            // 可用库存
+            initTrendChart('trend-avail-amount', generateTrendData(currentTimeDimension, 810, 0.08), '#1677ff', true);
+            initTrendChart('trend-avail-days', generateTrendData(currentTimeDimension, 32.5, 0.1), '#ff7a45', false);
+
+            // 可发库存
+            initTrendChart('trend-ship-amount', generateTrendData(currentTimeDimension, 650, 0.08), '#1677ff', true);
+            initTrendChart('trend-ship-days', generateTrendData(currentTimeDimension, 28, 0.1), '#ff7a45', false);
+        }
+
+        function setMode(mode, btn) {
+            const zone = document.getElementById('dashboard-zone');
+
+            // 样式切换
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            // 视图切换
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+
+            if (mode === 'kpi') {
+                zone.classList.remove('mode-summary');
+                zone.classList.add('mode-kpi');
+                if (chartPanelExpanded) {
+                    zone.classList.add('chart-expanded');
+                }
+                document.getElementById('view-kpi').classList.add('active');
+            } else if (mode === 'summary') {
+                zone.classList.remove('mode-kpi', 'chart-expanded');
+                zone.classList.add('mode-summary');
+                document.getElementById('view-summary').classList.add('active');
+            }
+        }
+
+        // === 图表面板展开/收起 ===
+        function toggleChartPanel() {
+            const zone = document.getElementById('dashboard-zone');
+            const panel = document.getElementById('chart-panel');
+            const icon = document.getElementById('chart-toggle-icon');
+            const label = document.getElementById('chart-toggle-label');
+
+            chartPanelExpanded = !chartPanelExpanded;
+
+            if (chartPanelExpanded) {
+                panel.classList.add('expanded');
+                icon.classList.add('expanded');
+                zone.classList.add('chart-expanded');
+                label.textContent = '收起';
+                // 等过渡动画结束后 resize 图表
+                setTimeout(() => {
+                    chartBrands.resize();
+                    chartPie.resize();
+                    chartTrend.resize();
+                }, 350);
+            } else {
+                panel.classList.remove('expanded');
+                icon.classList.remove('expanded');
+                zone.classList.remove('chart-expanded');
+                label.textContent = '展开图表分析';
+            }
+        }
+
+        // === 2. ECharts 初始化 ===
+        const chartBrands = echarts.init(document.getElementById('chart-brands'));
+        const chartPie = echarts.init(document.getElementById('chart-pie'));
+        const chartTrend = echarts.init(document.getElementById('chart-trend'));
+
+        // 品牌饼图数据
+        const brandPieData = [
+            { value: 450.5, name: '西门子 Siemens', days: 52 },
+            { value: 280.0, name: '施耐德 Schneider', days: 48 },
+            { value: 150.0, name: '3M', days: 35 },
+            { value: 120.0, name: '欧姆龙 Omron', days: 42 },
+            { value: 90.0, name: '费斯托 Festo', days: 38 },
+            { value: 155.0, name: '其他品牌', days: 45 }
+        ];
+
+        // 仓库饼图数据
+        const warehousePieData = [
+            { value: 620, name: '华东中心仓', days: 52 },
+            { value: 410, name: '东莞仓', days: 38 },
+            { value: 215.2, name: '上银仓', days: 26 }
+        ];
+
+        // 成本价格组饼图数据
+        const costGroupPieData = [
+            { value: 380.5, name: '价格组A', days: 45 },
+            { value: 320.0, name: '价格组B', days: 48 },
+            { value: 250.0, name: '价格组C', days: 42 },
+            { value: 180.0, name: '价格组D', days: 38 },
+            { value: 115.0, name: '价格组E', days: 35 }
+        ];
+
+        // 品牌柱状图数据
+        const brandBarData = {
+            xAxis: ['西门子 Siemens', '施耐德 Schneider', '3M', '欧姆龙 Omron', '费斯托 Festo', 'SMC', 'ABB', '台达 Delta', '霍尼韦尔 Honeywell', '力士乐 Rexroth'],
+            series: [
+                { name: '华东中心仓', type: 'bar', data: [120, 90, 80, 70, 60, 50, 40, 30, 20, 10], itemStyle: { color: '#1677ff' } },
+                { name: '东莞仓', type: 'bar', data: [80, 70, 60, 50, 40, 30, 20, 10, 5, 5], itemStyle: { color: '#00b42a' } },
+                { name: '上银仓', type: 'bar', data: [40, 30, 20, 10, 5, 5, 5, 2, 1, 1], itemStyle: { color: '#ff7d00' } }
+            ]
+        };
+
+        // 切换饼图视图（品牌/仓库/成本价格组）
+        function switchPieView(type, btn) {
+            // 更新按钮状态
+            btn.parentElement.querySelectorAll('.time-opt').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            // 更新标题
+            const title = document.getElementById('pie-chart-title');
+            if (type === 'brand') {
+                title.textContent = '品牌库存金额占比';
+                // 设置品牌饼图
+                chartPie.setOption({
+                    tooltip: {
+                        trigger: 'item',
+                        formatter: function (p) {
+                            return `<b>${p.name}</b><br/>占比: ${p.percent}%<br/>金额: ${p.value} 万<br/>周转天数: ${p.data.days} 天`;
+                        }
+                    },
+                    legend: { type: 'scroll', bottom: 0 },
+                    series: [{
+                        type: 'pie',
+                        radius: ['40%', '65%'],
+                        center: ['50%', '45%'],
+                        data: brandPieData
+                    }]
+                }, true);
+            } else if (type === 'warehouse') {
+                title.textContent = '仓库库存金额占比';
+                // 设置仓库饼图
+                chartPie.setOption({
+                    tooltip: {
+                        trigger: 'item',
+                        formatter: function (p) {
+                            return `<b>${p.name}</b><br/>占比: ${p.percent}%<br/>金额: ${p.value.toFixed(2)} 万<br/>周转天数: ${p.data.days} 天`;
+                        }
+                    },
+                    legend: { bottom: 0 },
+                    series: [{
+                        type: 'pie',
+                        radius: ['40%', '65%'],
+                        center: ['50%', '45%'],
+                        data: warehousePieData,
+                        itemStyle: {
+                            color: function(params) {
+                                const colors = ['#1677ff', '#00b42a', '#ff7d00'];
+                                return colors[params.dataIndex];
+                            }
+                        }
+                    }]
+                }, true);
+            } else if (type === 'costgroup') {
+                title.textContent = '成本价格组库存金额占比';
+                // 设置成本价格组饼图
+                chartPie.setOption({
+                    tooltip: {
+                        trigger: 'item',
+                        formatter: function (p) {
+                            return `<b>${p.name}</b><br/>占比: ${p.percent}%<br/>金额: ${p.value.toFixed(2)} 万<br/>周转天数: ${p.data.days} 天`;
+                        }
+                    },
+                    legend: { bottom: 0 },
+                    series: [{
+                        type: 'pie',
+                        radius: ['40%', '65%'],
+                        center: ['50%', '45%'],
+                        data: costGroupPieData
+                    }]
+                }, true);
+            }
+        }
+
+        // 初始化饼图为品牌视图
+        switchPieView('brand', document.querySelector('#chart-pie').closest('.chart-box').querySelector('.time-opt.active'));
+
+        // Chart 2: 品牌库存分布柱状图
+        chartBrands.setOption({
+            tooltip: {
+                trigger: 'axis',
+                axisPointer: { type: 'shadow' },
+                formatter: function(params) {
+                    let result = params[0].name + '<br/>';
+                    params.forEach(item => {
+                        result += item.marker + ' ' + item.seriesName + ': ' + item.value.toFixed(2) + '万<br/>';
+                    });
+                    return result;
+                }
+            },
+            legend: { bottom: 0, icon: 'circle', itemWidth: 8, itemHeight: 8 },
+            grid: { top: 30, bottom: 25, left: 40, right: 10, containLabel: true },
+            xAxis: {
+                type: 'category',
+                data: brandBarData.xAxis,
+                axisLabel: { interval: 0, rotate: 20, fontSize: 10, color: '#666' }
+            },
+            yAxis: { type: 'value', name: '金额(万)' },
+            series: brandBarData.series
+        });
+
+        // Chart 3: 趋势图 (三维度库存分析)
+        chartTrend.setOption({
+            tooltip: {
+                trigger: 'axis',
+                axisPointer: { type: 'shadow' },
+                formatter: function(params) {
+                    let result = params[0].axisValue + '<br/>';
+                    params.forEach(item => {
+                        if (item.seriesType === 'bar') {
+                            result += item.marker + ' ' + item.seriesName + ': ' + item.value + '万<br/>';
+                        } else {
+                            result += item.marker + ' ' + item.seriesName + ': ' + item.value + '天<br/>';
+                        }
+                    });
+                    return result;
+                }
+            },
+            legend: [
+                {
+                    bottom: 25,
+                    data: ['总库存金额', '可用库存金额', '期货在途金额'],
+                    selected: {
+                        '总库存金额': true,
+                        '可用库存金额': false,
+                        '期货在途金额': false
+                    }
+                },
+                {
+                    bottom: 0,
+                    data: ['总库存周转天数', '可用库存周转天数', '期货在途周转天数'],
+                    selected: {
+                        '总库存周转天数': true,
+                        '可用库存周转天数': false,
+                        '期货在途周转天数': false
+                    }
+                }
+            ],
+            grid: { top: 30, bottom: 70, left: 50, right: 50, containLabel: true },
+            xAxis: { type: 'category', data: ['W1', 'W2', 'W3', 'W4', 'W5', 'W6'] },
+            yAxis: [
+                { type: 'value', name: '金额(万)', min: 0, max: 1500, position: 'left', axisLine: { show: true }, splitLine: { show: true } },
+                { type: 'value', name: '天数', min: 0, max: 80, position: 'right', axisLine: { show: true }, splitLine: { show: false } }
+            ],
+            series: [
+                // 柱状图 - 总库存金额
+                {
+                    name: '总库存金额',
+                    type: 'bar',
+                    barWidth: 15,
+                    data: [1100, 1200, 1250, 1180, 1245, 1300],
+                    itemStyle: { color: '#1677ff' }
+                },
+                // 柱状图 - 可用库存金额
+                {
+                    name: '可用库存金额',
+                    type: 'bar',
+                    barWidth: 15,
+                    data: [850, 920, 950, 900, 950, 1000],
+                    itemStyle: { color: '#00b42a' }
+                },
+                // 柱状图 - 期货在途金额
+                {
+                    name: '期货在途金额',
+                    type: 'bar',
+                    barWidth: 15,
+                    data: [180, 200, 220, 200, 210, 230],
+                    itemStyle: { color: '#ff7d00' }
+                },
+                // 折线图 - 总库存周转天数
+                {
+                    name: '总库存周转天数',
+                    type: 'line',
+                    yAxisIndex: 1,
+                    data: [45, 46, 48, 47, 48, 49],
+                    itemStyle: { color: '#1677ff' },
+                    lineStyle: { type: 'dashed', width: 2 },
+                    smooth: true
+                },
+                // 折线图 - 可用库存周转天数
+                {
+                    name: '可用库存周转天数',
+                    type: 'line',
+                    yAxisIndex: 1,
+                    data: [35, 36, 37, 36, 37, 38],
+                    itemStyle: { color: '#00b42a' },
+                    lineStyle: { type: 'dashed', width: 2 },
+                    smooth: true
+                },
+                // 折线图 - 期货在途周转天数
+                {
+                    name: '期货在途周转天数',
+                    type: 'line',
+                    yAxisIndex: 1,
+                    data: [15, 16, 18, 17, 18, 19],
+                    itemStyle: { color: '#ff7d00' },
+                    lineStyle: { type: 'dashed', width: 2 },
+                    smooth: true
+                }
+            ]
+        });
+
+        window.onresize = function () { chartBrands.resize(); chartPie.resize(); chartTrend.resize(); };
+
+        // === 3. 全量列表渲染 (Mock Data) ===
+
+        // 列分组定义
+        const columnGroups = [
+            // 展开/收起列
+            { type: 'merged', id: 'expand', name: '', fixed: 'col-expand sticky-col', width: 36, align: 'center' },
+            // 固定列 (rowspan=2, 合并显示) - 文字类左对齐
+            { type: 'merged', id: 'img', name: '图片', fixed: 'col-img sticky-col', width: 50, align: 'left' },
+            { type: 'merged', id: 'sku', name: 'SKU', fixed: 'col-sku sticky-col', width: 80, align: 'left' },
+            { type: 'merged', id: 'brand', name: '品牌', fixed: 'col-brand sticky-col', width: 140, align: 'left' },
+            { type: 'merged', id: 'model', name: '型号', width: 90, align: 'left' },
+            { type: 'merged', id: 'factory_order', name: '厂订', width: 100, align: 'left' },
+            { type: 'merged', id: 'category1', name: '一级分类', width: 100, align: 'left' },
+            { type: 'merged', id: 'category2', name: '二级分类', width: 100, align: 'left' },
+            { type: 'merged', id: 'category3', name: '三级分类', width: 100, align: 'left' },
+            { type: 'merged', id: 'series', name: '系列', width: 120, align: 'left' },
+            { type: 'merged', id: 'group_name', name: '组名称', width: 100, align: 'left' },
+            { type: 'merged', id: 'cost_group', name: '成本价格组', width: 120, align: 'left' },
+            { type: 'merged', id: 'wh', name: '仓库', width: 80, align: 'left' },
+            { type: 'merged', id: 'unit', name: '库存单位', width: 70, groupBorderRight: true, align: 'center' },
+
+            // 总库存分组
+            {
+                type: 'group',
+                name: '总库存',
+                columns: [
+                    { id: 'total_qty', name: '数量', width: 70, align: 'center' },
+                    { id: 'total_amt', name: '库存金额（元）', width: 100, align: 'right' },
+                    { id: 'total_days', name: '周转天数', width: 70, groupBorderRight: true, align: 'center' }
+                ]
+            },
+
+            // 在库库存分组
+            {
+                type: 'group',
+                name: '在库库存',
+                columns: [
+                    { id: 'instock_qty', name: '数量', width: 70, align: 'center' },
+                    { id: 'instock_amt', name: '库存金额（元）', width: 100, align: 'right' },
+                    { id: 'instock_days', name: '周转天数', width: 70, groupBorderRight: true, align: 'center' }
+                ]
+            },
+
+            // 普通在途分组
+            {
+                type: 'group',
+                name: '普通在途',
+                columns: [
+                    { id: 'transit_normal_qty', name: '数量', width: 70, align: 'center' },
+                    { id: 'transit_normal_amt', name: '库存金额（元）', width: 100, align: 'right' },
+                    { id: 'transit_normal_days', name: '周转天数', width: 70, groupBorderRight: true, align: 'center' }
+                ]
+            },
+
+            // 期货在途分组
+            {
+                type: 'group',
+                name: '期货在途',
+                columns: [
+                    { id: 'transit_future_qty', name: '数量', width: 70, align: 'center' },
+                    { id: 'transit_future_amt', name: '库存金额（元）', width: 100, align: 'right' },
+                    { id: 'transit_future_days', name: '周转天数', width: 70, groupBorderRight: true, align: 'center' }
+                ]
+            },
+
+            // 可用库存分组
+            {
+                type: 'group',
+                name: '可用库存',
+                columns: [
+                    { id: 'avail_qty', name: '数量', width: 70, align: 'center' },
+                    { id: 'avail_amt', name: '库存金额（元）', width: 100, align: 'right' },
+                    { id: 'avail_days', name: '周转天数', width: 70, groupBorderRight: true, align: 'center' }
+                ]
+            },
+
+            // 可发库存分组
+            {
+                type: 'group',
+                name: '可发库存',
+                columns: [
+                    { id: 'ship_qty', name: '数量', width: 70, align: 'center' },
+                    { id: 'ship_amt', name: '库存金额（元）', width: 100, align: 'right' },
+                    { id: 'ship_days', name: '周转天数', width: 70, groupBorderRight: true, align: 'center' }
+                ]
+            },
+
+            // 价格分组
+            {
+                type: 'group',
+                name: '价格',
+                columns: [
+                    { id: 'price_face', name: '面价', width: 80, align: 'right' },
+                    { id: 'price_cost', name: '财务成本价', width: 90, align: 'right' },
+                    { id: 'price_cost_discount', name: '财务成本价折扣', width: 110, align: 'center' },
+                    { id: 'price_pm', name: '报价成本价', width: 90, align: 'right' },
+                    { id: 'price_pm_discount', name: '报价成本价折扣', width: 110, align: 'center', groupBorderRight: true }
+                ]
+            },
+
+            // 归属人分组
+            {
+                type: 'group',
+                name: '归属人',
+                columns: [
+                    { id: 'buyer', name: '采购专员', width: 80, align: 'left' },
+                    { id: 'buyer_manager', name: '采购主管', width: 80, align: 'left' },
+                    { id: 'quoter', name: '报价专员', width: 80, align: 'left' },
+                    { id: 'developer', name: '商品开发', width: 80, align: 'left' },
+                    { id: 'dev_manager', name: '开发主管', width: 80, align: 'left', groupBorderRight: true }
+                ]
+            },
+
+            // 备货标签分组
+            {
+                type: 'group',
+                name: '备货标签',
+                columns: [
+                    { id: 'abc', name: '预测分层', width: 70, align: 'left' },
+                    { id: 'hot', name: '热销等级', width: 70, align: 'left' },
+                    { id: 'forecast', name: '预测周销', width: 70, align: 'center' },
+                    { id: 'stock_type', name: '备货类型', width: 80, align: 'left' },
+                    { id: 'safe_stock', name: '安全库存', width: 70, align: 'center' },
+                    { id: 'limit_min', name: '下限数量', width: 80, align: 'left' },
+                    { id: 'limit_max', name: '上限数量', width: 80, align: 'left', groupBorderRight: true }
+                ]
+            },
+
+            // 库存健康分组
+            {
+                type: 'group',
+                name: '库存健康',
+                columns: [
+                    { id: 'self_dead_qty', name: '自营滞销数量', width: 90, align: 'center' },
+                    { id: 'self_dead_amt', name: '自营滞销金额（元）', width: 110, align: 'right' },
+                    { id: 'consign_dead_qty', name: '寄售滞销数量', width: 90, align: 'center' },
+                    { id: 'consign_dead_amt', name: '寄售滞销金额（元）', width: 110, align: 'right', groupBorderRight: true }
+                ]
+            }
+        ];
+
+        // Mock Data Generation
+        const brands = ['西门子 Siemens', '施耐德 Schneider', '欧姆龙 Omron', '3M', 'SMC'];
+        const whs = ['华东中心仓', '东莞仓', '上银仓'];
+        const stockTypes = ['非备货', '常规备货', '风险备货', '集采', '寄售', '黑名单', '白名单', '红色库存'];
+        const abcTypes = ['A', 'B', 'C'];
+        const hotTypes = ['热销', '平销', '滞销'];
+        const units = ['个', '包', '箱'];
+
+        // 归属人数据
+        const buyers = ['张伟', '李娜', '王芳', '刘洋', '陈明'];
+        const buyerManagers = ['赵刚', '钱峰', '孙强'];
+        const quoters = ['周静', '吴敏', '郑丽', '王磊'];
+        const developers = ['冯涛', '褚琳', '卫华', '蒋勇', '沈洁'];
+        const devManagers = ['韩冰', '杨帆', '朱军'];
+
+        // MRO行业分类数据
+        const mroCategories = [
+            {
+                category1: '工业控制',
+                category2: 'PLC',
+                category3: '小型PLC',
+                series: '西门子S7-1200系列',
+                group_name: '可编程控制器组',
+                cost_group: '价格组A'
+            },
+            {
+                category1: '工业控制',
+                category2: '触摸屏',
+                category3: '7寸触摸屏',
+                series: '施耐德Magelis系列',
+                group_name: '人机界面组',
+                cost_group: '价格组A'
+            },
+            {
+                category1: '传动控制',
+                category2: '伺服系统',
+                category3: '伺服电机',
+                series: '欧姆龙Accurax G5系列',
+                group_name: '伺服驱动组',
+                cost_group: '价格组B'
+            },
+            {
+                category1: '传动控制',
+                category2: '变频器',
+                category3: '通用变频器',
+                series: '西门子V20系列',
+                group_name: '变频调速组',
+                cost_group: '价格组A'
+            },
+            {
+                category1: '传感器',
+                category2: '接近开关',
+                category3: '电感式接近开关',
+                series: '欧姆龙E2E系列',
+                group_name: '位置检测组',
+                cost_group: '价格组C'
+            },
+            {
+                category1: '低压控制',
+                category2: '继电器',
+                category3: '中间继电器',
+                series: '施耐德Zelio系列',
+                group_name: '电气控制组',
+                cost_group: '价格组C'
+            },
+            {
+                category1: '气动元件',
+                category2: '气缸',
+                category3: '标准气缸',
+                series: 'SMC C系列',
+                group_name: '气动执行组',
+                cost_group: '价格组A'
+            },
+            {
+                category1: '工业耗材',
+                category2: '胶带',
+                category3: '绝缘胶带',
+                series: '3M Scotch系列',
+                group_name: '辅材耗材组',
+                cost_group: '价格组D'
+            }
+        ];
+
+        function generateSKU(index) {
+            const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            const letter1 = letters[Math.floor(Math.random() * 26)];
+            const letter2 = letters[Math.floor(Math.random() * 26)];
+            const digits = String(1000 + index).slice(-4);
+            const sku = letter1 + letter2 + digits;
+
+            // 生成型号
+            const modelPrefix = ['XG', 'SN', 'OM', 'MT', 'SC'][index % 5];
+            const modelNum = String(2000 + index * 10).slice(-4);
+            const modelSuffix = ['-A', '-B', '-C', '-D', '-E'][Math.floor(Math.random() * 5)];
+            const model = modelPrefix + modelNum + modelSuffix;
+
+            return { sku, model };
+        }
+
+        // 生成厂订号
+        function generateFactoryOrder(index) {
+            const year = '2024';
+            const month = String(Math.floor(Math.random() * 12) + 1).padStart(2, '0');
+            const orderNum = String(10000 + index * 123).slice(-5);
+            return `FO${year}${month}${orderNum}`;
+        }
+
+        // 生成随机仓库数据
+        function generateWarehouseData(price, unit) {
+            const instockQty = Math.floor(Math.random() * 200) + 20;
+            const instockAmt = instockQty * price;
+            const transitNormalQty = Math.floor(Math.random() * 80);
+            const transitNormalAmt = transitNormalQty * price;
+            const transitFutureQty = Math.floor(Math.random() * 100);
+            const transitFutureAmt = transitFutureQty * price;
+            const availQty = instockQty + transitNormalQty + transitFutureQty - Math.floor(Math.random() * 30);
+            const availAmt = availQty * price;
+            const shipQty = Math.floor(instockQty * 0.85);
+            const shipAmt = shipQty * price;
+
+            return {
+                unit: unit,
+                instock_total_qty: instockQty,
+                instock_total_amt: instockAmt,
+                instock_total_days: Math.floor(Math.random() * 40) + 15,
+                transit_normal_qty: transitNormalQty,
+                transit_normal_amt: transitNormalAmt,
+                transit_normal_days: Math.floor(Math.random() * 15) + 3,
+                transit_future_qty: transitFutureQty,
+                transit_future_amt: transitFutureAmt,
+                transit_future_days: Math.floor(Math.random() * 25) + 8,
+                avail_qty: availQty,
+                avail_amt: availAmt,
+                avail_days: Math.floor(Math.random() * 50) + 20,
+                ship_qty: shipQty,
+                ship_amt: shipAmt,
+                ship_days: Math.floor(Math.random() * 40) + 15,
+                price_face: price * 1.3,
+                price_cost: price,
+                price_cost_discount: (Math.random() * 0.3 + 0.65).toFixed(4),
+                price_pm: price * 1.1,
+                price_pm_discount: (Math.random() * 0.25 + 0.70).toFixed(4),
+                forecast: Math.floor(Math.random() * 80) + 10,
+                safe_stock: Math.floor(Math.random() * 50) + 10,
+                limit_min: `${Math.floor(Math.random() * 3) + 1}w/${Math.floor(Math.random() * 10) + 5}d`,
+                limit_max: `${Math.floor(Math.random() * 8) + 5}w/${Math.floor(Math.random() * 30) + 20}d`,
+                self_dead_qty: Math.floor(Math.random() * 50),
+                self_dead_amt: Math.random() > 0.6 ? Math.floor(Math.random() * 30000) + 5000 : Math.random() * 800 + 100,
+                consign_dead_qty: Math.floor(Math.random() * 30),
+                consign_dead_amt: Math.random() > 0.6 ? Math.floor(Math.random() * 20000) + 3000 : Math.random() * 600 + 50,
+                // 总库存 = 在库 + 普通在途 + 期货在途
+                total_qty: instockQty + transitNormalQty + transitFutureQty,
+                total_amt: instockAmt + transitNormalAmt + transitFutureAmt,
+                total_days: Math.floor(Math.random() * 50) + 20
+            };
+        }
+
+        // 生成分组数据：每个SKU包含多个仓库
+        let groupedData = [];
+        for (let i = 0; i < 8; i++) {
+            const skuData = generateSKU(i);
+            const factoryOrder = generateFactoryOrder(i);
+            const brand = brands[i % 5];
+            const unit = units[i % 3];
+            const price = Math.floor(Math.random() * 800) + 100;
+            const abc = abcTypes[Math.floor(Math.random() * 3)];
+            const hot = hotTypes[Math.floor(Math.random() * 3)];
+            const stockType = stockTypes[i % 8];
+
+            // 获取MRO分类数据
+            const mroCategory = mroCategories[i % mroCategories.length];
+
+            // 获取归属人数据
+            const buyer = buyers[i % buyers.length];
+            const buyerManager = buyerManagers[i % buyerManagers.length];
+            const quoter = quoters[i % quoters.length];
+            const developer = developers[i % developers.length];
+            const devManager = devManagers[i % devManagers.length];
+
+            // 每个SKU固定包含全部3个仓库
+            const children = whs.map((wh, idx) => {
+                const whData = generateWarehouseData(price, unit);
+                return {
+                    id: `${i}-${idx}`,
+                    sku: skuData.sku,
+                    model: skuData.model,
+                    factory_order: factoryOrder,
+                    brand: brand,
+                    category1: mroCategory.category1,
+                    category2: mroCategory.category2,
+                    category3: mroCategory.category3,
+                    series: mroCategory.series,
+                    group_name: mroCategory.group_name,
+                    cost_group: mroCategory.cost_group,
+                    buyer: buyer,
+                    buyer_manager: buyerManager,
+                    quoter: quoter,
+                    developer: developer,
+                    dev_manager: devManager,
+                    wh: wh,
+                    abc: abc,
+                    hot: hot,
+                    stock_type: stockType,
+                    ...whData
+                };
+            });
+
+            // 计算汇总数据
+            const summary = {
+                id: `${i}-summary`,
+                sku: skuData.sku,
+                model: skuData.model,
+                factory_order: factoryOrder,
+                brand: brand,
+                category1: mroCategory.category1,
+                category2: mroCategory.category2,
+                category3: mroCategory.category3,
+                series: mroCategory.series,
+                group_name: mroCategory.group_name,
+                cost_group: mroCategory.cost_group,
+                buyer: buyer,
+                buyer_manager: buyerManager,
+                quoter: quoter,
+                developer: developer,
+                dev_manager: devManager,
+                wh: '仓库汇总',
+                unit: unit,
+                abc: abc,
+                hot: hot,
+                stock_type: stockType,
+                total_qty: children.reduce((sum, c) => sum + c.total_qty, 0),
+                total_amt: children.reduce((sum, c) => sum + c.total_amt, 0),
+                total_days: Math.round(children.reduce((sum, c) => sum + c.total_days, 0) / children.length),
+                instock_total_qty: children.reduce((sum, c) => sum + c.instock_total_qty, 0),
+                instock_total_amt: children.reduce((sum, c) => sum + c.instock_total_amt, 0),
+                instock_total_days: Math.round(children.reduce((sum, c) => sum + c.instock_total_days, 0) / children.length),
+                transit_normal_qty: children.reduce((sum, c) => sum + c.transit_normal_qty, 0),
+                transit_normal_amt: children.reduce((sum, c) => sum + c.transit_normal_amt, 0),
+                transit_normal_days: Math.round(children.reduce((sum, c) => sum + c.transit_normal_days, 0) / children.length),
+                transit_future_qty: children.reduce((sum, c) => sum + c.transit_future_qty, 0),
+                transit_future_amt: children.reduce((sum, c) => sum + c.transit_future_amt, 0),
+                transit_future_days: Math.round(children.reduce((sum, c) => sum + c.transit_future_days, 0) / children.length),
+                avail_qty: children.reduce((sum, c) => sum + c.avail_qty, 0),
+                avail_amt: children.reduce((sum, c) => sum + c.avail_amt, 0),
+                avail_days: Math.round(children.reduce((sum, c) => sum + c.avail_days, 0) / children.length),
+                ship_qty: children.reduce((sum, c) => sum + c.ship_qty, 0),
+                ship_amt: children.reduce((sum, c) => sum + c.ship_amt, 0),
+                ship_days: Math.round(children.reduce((sum, c) => sum + c.ship_days, 0) / children.length),
+                price_face: children[0].price_face,
+                price_cost: children[0].price_cost,
+                price_cost_discount: children[0].price_cost_discount,
+                price_pm: children[0].price_pm,
+                price_pm_discount: children[0].price_pm_discount,
+                forecast: children.reduce((sum, c) => sum + c.forecast, 0),
+                safe_stock: children.reduce((sum, c) => sum + c.safe_stock, 0),
+                limit_min: children[0].limit_min,
+                limit_max: children[0].limit_max,
+                self_dead_qty: children.reduce((sum, c) => sum + c.self_dead_qty, 0),
+                self_dead_amt: children.reduce((sum, c) => sum + c.self_dead_amt, 0),
+                consign_dead_qty: children.reduce((sum, c) => sum + c.consign_dead_qty, 0),
+                consign_dead_amt: children.reduce((sum, c) => sum + c.consign_dead_amt, 0)
+            };
+
+            groupedData.push({
+                summary: summary,
+                children: children,
+                expanded: false
+            });
+        }
+
+        // 展开/折叠状态管理
+        let allExpandedState = false; // 全局展开状态
+
+        function toggleExpand(skuIndex) {
+            groupedData[skuIndex].expanded = !groupedData[skuIndex].expanded;
+            renderTable();
+        }
+
+        function toggleAllExpand() {
+            allExpandedState = !allExpandedState;
+            groupedData.forEach(g => g.expanded = allExpandedState);
+            renderTable();
+            // 更新按钮文字
+            updateToggleButton();
+        }
+
+        function updateToggleButton() {
+            const btn = document.getElementById('toggle-all-btn');
+            if (btn) {
+                if (allExpandedState) {
+                    btn.innerHTML = '<i class="fas fa-minus-square"></i> 全部折叠';
+                } else {
+                    btn.innerHTML = '<i class="fas fa-plus-square"></i> 全部展开';
+                }
+            }
+        }
+
+        // 使函数全局可用
+        window.toggleExpand = toggleExpand;
+        window.toggleAllExpand = toggleAllExpand;
+
+        // 格式化金额（元）：>=1000取整数，<1000保留两位小数
+        function formatAmt(val) {
+            if (val >= 1000) {
+                return Math.round(val).toLocaleString();
+            }
+            return val.toFixed(2);
+        }
+
+        // 渲染表格
+        function renderTable() {
+            // === 第一行：一级标题 ===
+            let html = `<thead><tr>`;
+
+            columnGroups.forEach(group => {
+                if (group.type === 'merged') {
+                    // 合并列，rowspan=2
+                    const borderClass = group.groupBorderRight ? 'group-border-right' : '';
+                    const fixedClass = group.fixed || '';
+                    const alignStyle = group.align ? `text-align:${group.align};` : '';
+                    html += `<th rowspan="2" class="${fixedClass} ${borderClass}" style="width:${group.width}px; min-width:${group.width}px; ${alignStyle}">${group.name}</th>`;
+                } else if (group.type === 'group') {
+                    // 分组标题，colspan - 居中对齐
+                    const lastCol = group.columns[group.columns.length - 1];
+                    const borderClass = lastCol.groupBorderRight ? 'group-border-right' : '';
+                    html += `<th colspan="${group.columns.length}" class="group-header ${borderClass}" style="text-align:center;">${group.name}</th>`;
+                }
+            });
+            html += `</tr>`;
+
+            // === 第二行：二级标题 ===
+            html += `<tr>`;
+            columnGroups.forEach(group => {
+                if (group.type === 'group') {
+                    group.columns.forEach(col => {
+                        const borderClass = col.groupBorderRight ? 'group-border-right' : '';
+                        const alignStyle = col.align ? `text-align:${col.align};` : '';
+                        html += `<th class="${borderClass}" style="width:${col.width}px; min-width:${col.width}px; ${alignStyle}">${col.name}</th>`;
+                    });
+                }
+                // merged 类型在第一行已用 rowspan=2，这里不需要处理
+            });
+            html += `</tr></thead>`;
+
+            // === 数据行（父子行模式） ===
+            html += `<tbody>`;
+
+            groupedData.forEach((group, skuIndex) => {
+                const row = group.summary;
+                const isExpanded = group.expanded;
+                const hasChildren = group.children.length > 1;
+
+                // 父行（汇总行）
+                html += `<tr class="parent-row" onclick="toggleExpand(${skuIndex})">`;
+
+                // 展开/收起列
+                const expandIcon = `<span class="expand-icon ${isExpanded ? 'expanded' : ''}">▶</span>`;
+                html += `<td class="col-expand sticky-col">${expandIcon}</td>`;
+
+                // 图片
+                html += `<td class="col-img sticky-col"><i class="fas fa-image" style="color:#ddd;font-size:18px;"></i></td>`;
+
+                // SKU
+                html += `<td class="col-sku sticky-col">
+                    <div class="sku-box">
+                        <a href="#" class="sku-link" onclick="event.stopPropagation();">${row.sku}</a>
+                    </div>
+                </td>`;
+
+                // 品牌
+                html += `<td class="col-brand sticky-col">${row.brand}</td>`;
+
+                // 型号
+                html += `<td>${row.model}</td>`;
+
+                // 厂订
+                html += `<td>${row.factory_order}</td>`;
+
+                // 一级分类
+                html += `<td>${row.category1}</td>`;
+
+                // 二级分类
+                html += `<td>${row.category2}</td>`;
+
+                // 三级分类
+                html += `<td>${row.category3}</td>`;
+
+                // 系列
+                html += `<td>${row.series}</td>`;
+
+                // 组名称
+                html += `<td>${row.group_name}</td>`;
+
+                // 成本价各组名称
+                html += `<td>${row.cost_group}</td>`;
+
+                // 仓库（显示"仓库汇总"）
+                html += `<td><span style="color:#1890ff;font-weight:500;">${row.wh}</span></td>`;
+
+                // 库存单位
+                html += `<td class="group-border-right" style="text-align:center">${row.unit}</td>`;
+
+                // 总库存 (3列)
+                html += `<td style="text-align:center">${row.total_qty}</td>`;
+                html += `<td style="text-align:right">${formatAmt(row.total_amt)}</td>`;
+                html += `<td class="group-border-right" style="text-align:center">${row.total_days}</td>`;
+
+                // 在库库存 (3列)
+                html += `<td style="text-align:center">${row.instock_total_qty}</td>`;
+                html += `<td style="text-align:right">${formatAmt(row.instock_total_amt)}</td>`;
+                html += `<td class="group-border-right" style="text-align:center">${row.instock_total_days}</td>`;
+
+                // 普通在途 (3列)
+                html += `<td style="text-align:center">${row.transit_normal_qty}</td>`;
+                html += `<td style="text-align:right">${formatAmt(row.transit_normal_amt)}</td>`;
+                html += `<td class="group-border-right" style="text-align:center">${row.transit_normal_days}</td>`;
+
+                // 期货在途 (3列)
+                html += `<td style="text-align:center">${row.transit_future_qty}</td>`;
+                html += `<td style="text-align:right">${formatAmt(row.transit_future_amt)}</td>`;
+                html += `<td class="group-border-right" style="text-align:center">${row.transit_future_days}</td>`;
+
+                // 可用库存 (3列)
+                html += `<td style="text-align:center">${row.avail_qty}</td>`;
+                html += `<td style="text-align:right">${formatAmt(row.avail_amt)}</td>`;
+                html += `<td class="group-border-right" style="text-align:center">${row.avail_days}</td>`;
+
+                // 可发库存 (3列)
+                html += `<td style="text-align:center">${row.ship_qty}</td>`;
+                html += `<td style="text-align:right">${formatAmt(row.ship_amt)}</td>`;
+                html += `<td class="group-border-right" style="text-align:center">${row.ship_days}</td>`;
+
+                // 价格 (5列)
+                html += `<td style="text-align:right">${formatAmt(row.price_face)}</td>`;
+                html += `<td style="text-align:right">${formatAmt(row.price_cost)}</td>`;
+                html += `<td style="text-align:center">${row.price_cost_discount}</td>`;
+                html += `<td style="text-align:right">${formatAmt(row.price_pm)}</td>`;
+                html += `<td class="group-border-right" style="text-align:center">${row.price_pm_discount}</td>`;
+
+                // 归属人 (5列)
+                html += `<td>${row.buyer}</td>`;
+                html += `<td>${row.buyer_manager}</td>`;
+                html += `<td>${row.quoter}</td>`;
+                html += `<td>${row.developer}</td>`;
+                html += `<td class="group-border-right">${row.dev_manager}</td>`;
+
+                // 备货标签 (7列)
+                html += `<td style="text-align:left">${row.abc}</td>`;
+                html += `<td style="text-align:left">${row.hot}</td>`;
+                html += `<td style="text-align:center">${row.forecast}</td>`;
+                html += `<td style="text-align:left;${row.stock_type === '红色库存' ? 'color:#f53f3f;font-weight:600;' : ''}">${row.stock_type}</td>`;
+                html += `<td style="text-align:center">${row.safe_stock}</td>`;
+                html += `<td style="text-align:left">${row.limit_min}</td>`;
+                html += `<td class="group-border-right" style="text-align:left">${row.limit_max}</td>`;
+
+                // 库存健康 (4列)
+                html += `<td style="text-align:center">${row.self_dead_qty}</td>`;
+                html += `<td style="text-align:right">${formatAmt(row.self_dead_amt)}</td>`;
+                html += `<td style="text-align:center">${row.consign_dead_qty}</td>`;
+                html += `<td class="group-border-right" style="text-align:right">${formatAmt(row.consign_dead_amt)}</td>`;
+
+                html += `</tr>`;
+
+                // 子行（各仓库明细）- 仅当展开时显示
+                if (isExpanded) {
+                    group.children.forEach(child => {
+                        html += `<tr class="child-row">`;
+
+                        // 展开/收起列（子行为空）
+                        html += `<td class="col-expand sticky-col"></td>`;
+
+                        // 图片
+                        html += `<td class="col-img sticky-col"></td>`;
+
+                        // SKU（子行显示缩进指示）
+                        html += `<td class="col-sku sticky-col">
+                            <div class="sku-box" style="padding-left:24px; color:#999;">
+                                <span style="font-size:12px;">└</span>
+                            </div>
+                        </td>`;
+
+                        // 品牌（子行不重复显示）
+                        html += `<td class="col-brand sticky-col"></td>`;
+
+                        // 型号（子行不重复显示）
+                        html += `<td></td>`;
+
+                        // 厂订（子行不重复显示）
+                        html += `<td></td>`;
+
+                        // 一级分类（子行不重复显示）
+                        html += `<td></td>`;
+
+                        // 二级分类（子行不重复显示）
+                        html += `<td></td>`;
+
+                        // 三级分类（子行不重复显示）
+                        html += `<td></td>`;
+
+                        // 系列（子行不重复显示）
+                        html += `<td></td>`;
+
+                        // 组名称（子行不重复显示）
+                        html += `<td></td>`;
+
+                        // 成本价各组名称（子行不重复显示）
+                        html += `<td></td>`;
+
+                        // 仓库
+                        html += `<td>${child.wh}</td>`;
+
+                        // 库存单位（子行为空）
+                        html += `<td class="group-border-right"></td>`;
+
+                        // 总库存 (3列)
+                        html += `<td style="text-align:center">${child.total_qty}</td>`;
+                        html += `<td style="text-align:right">${formatAmt(child.total_amt)}</td>`;
+                        html += `<td class="group-border-right" style="text-align:center">${child.total_days}</td>`;
+
+                        // 在库库存 (3列)
+                        html += `<td style="text-align:center">${child.instock_total_qty}</td>`;
+                        html += `<td style="text-align:right">${formatAmt(child.instock_total_amt)}</td>`;
+                        html += `<td class="group-border-right" style="text-align:center">${child.instock_total_days}</td>`;
+
+                        // 普通在途 (3列)
+                        html += `<td style="text-align:center">${child.transit_normal_qty}</td>`;
+                        html += `<td style="text-align:right">${formatAmt(child.transit_normal_amt)}</td>`;
+                        html += `<td class="group-border-right" style="text-align:center">${child.transit_normal_days}</td>`;
+
+                        // 期货在途 (3列)
+                        html += `<td style="text-align:center">${child.transit_future_qty}</td>`;
+                        html += `<td style="text-align:right">${formatAmt(child.transit_future_amt)}</td>`;
+                        html += `<td class="group-border-right" style="text-align:center">${child.transit_future_days}</td>`;
+
+                        // 可用库存 (3列)
+                        html += `<td style="text-align:center">${child.avail_qty}</td>`;
+                        html += `<td style="text-align:right">${formatAmt(child.avail_amt)}</td>`;
+                        html += `<td class="group-border-right" style="text-align:center">${child.avail_days}</td>`;
+
+                        // 可发库存 (3列)
+                        html += `<td style="text-align:center">${child.ship_qty}</td>`;
+                        html += `<td style="text-align:right">${formatAmt(child.ship_amt)}</td>`;
+                        html += `<td class="group-border-right" style="text-align:center">${child.ship_days}</td>`;
+
+                        // 价格 (5列)
+                        html += `<td style="text-align:right">${formatAmt(child.price_face)}</td>`;
+                        html += `<td style="text-align:right">${formatAmt(child.price_cost)}</td>`;
+                        html += `<td style="text-align:center">${child.price_cost_discount}</td>`;
+                        html += `<td style="text-align:right">${formatAmt(child.price_pm)}</td>`;
+                        html += `<td class="group-border-right" style="text-align:center">${child.price_pm_discount}</td>`;
+
+                        // 归属人 (5列) - 子行为空
+                        html += `<td></td>`;
+                        html += `<td></td>`;
+                        html += `<td></td>`;
+                        html += `<td></td>`;
+                        html += `<td class="group-border-right"></td>`;
+
+                        // 备货标签 (7列) - 子行显示数据
+                        html += `<td style="text-align:left">${child.abc}</td>`;
+                        html += `<td style="text-align:left">${child.hot}</td>`;
+                        html += `<td style="text-align:center">${child.forecast}</td>`;
+                        html += `<td style="text-align:left">${child.stock_type}</td>`;
+                        html += `<td style="text-align:center">${child.safe_stock}</td>`;
+                        html += `<td style="text-align:left">${child.limit_min}</td>`;
+                        html += `<td class="group-border-right" style="text-align:left">${child.limit_max}</td>`;
+
+                        // 库存健康 (4列) - 子行显示数据
+                        html += `<td style="text-align:center">${child.self_dead_qty}</td>`;
+                        html += `<td style="text-align:right">${formatAmt(child.self_dead_amt)}</td>`;
+                        html += `<td style="text-align:center">${child.consign_dead_qty}</td>`;
+                        html += `<td class="group-border-right" style="text-align:right">${formatAmt(child.consign_dead_amt)}</td>`;
+
+                        html += `</tr>`;
+                    });
+                }
+            });
+            html += `</tbody>`;
+
+            document.getElementById('super-grid').innerHTML = html;
+        }
+
+        // Sort table function (简化版，保留接口)
+        function sortTable(columnId) {
+            // 可根据需要扩展排序逻辑
+            renderTable();
+        }
+
+        window.sortTable = sortTable;
+
+        // Initial render
+        renderTable();
+
+        // === 4. 库存汇总相关功能 ===
+
+        // Tab切换函数
+        function switchListView(view, btn) {
+            // 更新Tab按钮状态
+            document.querySelectorAll('.list-tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            // 切换内容
+            document.querySelectorAll('.list-tab-content').forEach(c => c.classList.remove('active'));
+            if (view === 'detail') {
+                document.getElementById('list-view-detail').classList.add('active');
+            } else if (view === 'summary') {
+                document.getElementById('list-view-summary').classList.add('active');
+            }
+        }
+
+        // 汇总维度切换函数
+        function switchSummaryDimension(dimension, btn) {
+            // 更新二级Tab按钮状态
+            document.querySelectorAll('.summary-sub-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            // 切换维度内容
+            document.querySelectorAll('.summary-dimension-content').forEach(c => c.classList.remove('active'));
+            const brandToolbar = document.getElementById('brand-toolbar');
+            const costgroupToolbar = document.getElementById('costgroup-toolbar');
+
+            if (dimension === 'warehouse') {
+                document.getElementById('summary-warehouse').classList.add('active');
+                brandToolbar.style.display = 'none';
+                costgroupToolbar.style.display = 'none';
+            } else if (dimension === 'brand') {
+                document.getElementById('summary-brand').classList.add('active');
+                brandToolbar.style.display = 'flex';
+                costgroupToolbar.style.display = 'none';
+                renderBrandSummary(); // 渲染品牌维度表格
+            } else if (dimension === 'costgroup') {
+                document.getElementById('summary-costgroup').classList.add('active');
+                brandToolbar.style.display = 'none';
+                costgroupToolbar.style.display = 'flex';
+                renderCostGroupSummary(); // 渲染成本价格组维度表格
+            }
+        }
+
+        // 仓库维度汇总数据
+        const warehouseSummaryData = [
+            {
+                warehouse: '华东中心仓',
+                total_amt: 6200000,
+                total_days: 52,
+                self_instock_amt: 3000000,
+                self_instock_days: 48,
+                avail_amt: 4800000,
+                avail_days: 45,
+                ship_amt: 4200000,
+                ship_days: 42,
+                transit_normal_amt: 1200000,
+                transit_normal_days: 15,
+                transit_future_amt: 800000,
+                upper_limit_amt: 5000000,
+                lower_limit_amt: 1000000,
+                spot_sku_count: 580,
+                stock_sku_count: 450,
+                stock_spot_count: 420,
+                stock_spot_rate: 93.3
+            },
+            {
+                warehouse: '东莞仓',
+                total_amt: 4100000,
+                total_days: 38,
+                self_instock_amt: 2500000,
+                self_instock_days: 35,
+                avail_amt: 3200000,
+                avail_days: 32,
+                ship_amt: 2800000,
+                ship_days: 30,
+                transit_normal_amt: 800000,
+                transit_normal_days: 12,
+                transit_future_amt: 500000,
+                upper_limit_amt: 3500000,
+                lower_limit_amt: 800000,
+                spot_sku_count: 380,
+                stock_sku_count: 300,
+                stock_spot_count: 285,
+                stock_spot_rate: 95.0
+            },
+            {
+                warehouse: '上银仓',
+                total_amt: 2152000,
+                total_days: 26,
+                self_instock_amt: 1000000,
+                self_instock_days: 22,
+                avail_amt: 1680000,
+                avail_days: 20,
+                ship_amt: 1450000,
+                ship_days: 18,
+                transit_normal_amt: 400000,
+                transit_normal_days: 8,
+                transit_future_amt: 300000,
+                upper_limit_amt: 2000000,
+                lower_limit_amt: 500000,
+                spot_sku_count: 195,
+                stock_sku_count: 100,
+                stock_spot_count: 92,
+                stock_spot_rate: 92.0
+            }
+        ];
+
+        // 计算汇总行
+        const warehouseSummaryTotal = {
+            warehouse: '仓库汇总',
+            total_amt: warehouseSummaryData.reduce((sum, row) => sum + row.total_amt, 0),
+            total_days: Math.round(warehouseSummaryData.reduce((sum, row) => sum + row.total_days, 0) / warehouseSummaryData.length),
+            self_instock_amt: warehouseSummaryData.reduce((sum, row) => sum + row.self_instock_amt, 0),
+            self_instock_days: Math.round(warehouseSummaryData.reduce((sum, row) => sum + row.self_instock_days, 0) / warehouseSummaryData.length),
+            avail_amt: warehouseSummaryData.reduce((sum, row) => sum + row.avail_amt, 0),
+            avail_days: Math.round(warehouseSummaryData.reduce((sum, row) => sum + row.avail_days, 0) / warehouseSummaryData.length),
+            ship_amt: warehouseSummaryData.reduce((sum, row) => sum + row.ship_amt, 0),
+            ship_days: Math.round(warehouseSummaryData.reduce((sum, row) => sum + row.ship_days, 0) / warehouseSummaryData.length),
+            transit_normal_amt: warehouseSummaryData.reduce((sum, row) => sum + row.transit_normal_amt, 0),
+            transit_normal_days: Math.round(warehouseSummaryData.reduce((sum, row) => sum + row.transit_normal_days, 0) / warehouseSummaryData.length),
+            transit_future_amt: warehouseSummaryData.reduce((sum, row) => sum + row.transit_future_amt, 0),
+            upper_limit_amt: warehouseSummaryData.reduce((sum, row) => sum + row.upper_limit_amt, 0),
+            lower_limit_amt: warehouseSummaryData.reduce((sum, row) => sum + row.lower_limit_amt, 0),
+            spot_sku_count: warehouseSummaryData.reduce((sum, row) => sum + row.spot_sku_count, 0),
+            stock_sku_count: warehouseSummaryData.reduce((sum, row) => sum + row.stock_sku_count, 0),
+            stock_spot_count: warehouseSummaryData.reduce((sum, row) => sum + row.stock_spot_count, 0),
+            stock_spot_rate: ((warehouseSummaryData.reduce((sum, row) => sum + row.stock_spot_count, 0) / warehouseSummaryData.reduce((sum, row) => sum + row.stock_sku_count, 0)) * 100).toFixed(1)
+        };
+
+        // 格式化金额（万元）- 只返回数字
+        function formatAmtWan(val) {
+            return (val / 10000).toFixed(1);
+        }
+
+        // === 品牌维度汇总数据 ===
+        const brandList = [
+            '西门子 Siemens', '施耐德 Schneider', '欧姆龙 Omron', '3M', 'SMC',
+            '费斯托 Festo', 'ABB', '台达 Delta', '霍尼韦尔 Honeywell', '力士乐 Rexroth',
+            '倍加福 P+F', '图尔克 Turck', '巴鲁夫 Balluff', '魏德米勒 Weidmuller', '菲尼克斯 Phoenix Contact'
+        ];
+
+        // 生成品牌维度数据
+        const brandSummaryData = brandList.map((brand, index) => {
+            // 为每个品牌生成3个仓库的数据
+            const warehouses = [
+                {
+                    warehouse: '华东中心仓',
+                    total_amt: Math.floor(Math.random() * 3000000) + 2000000,
+                    total_days: Math.floor(Math.random() * 20) + 40,
+                    self_instock_amt: Math.floor(Math.random() * 1500000) + 1000000,
+                    self_instock_days: Math.floor(Math.random() * 15) + 35,
+                    avail_amt: Math.floor(Math.random() * 2000000) + 1500000,
+                    avail_days: Math.floor(Math.random() * 15) + 30,
+                    ship_amt: Math.floor(Math.random() * 1800000) + 1200000,
+                    ship_days: Math.floor(Math.random() * 15) + 28,
+                    transit_normal_amt: Math.floor(Math.random() * 600000) + 400000,
+                    transit_normal_days: Math.floor(Math.random() * 8) + 10,
+                    transit_future_amt: Math.floor(Math.random() * 400000) + 200000,
+                    upper_limit_amt: Math.floor(Math.random() * 2000000) + 3000000,
+                    lower_limit_amt: Math.floor(Math.random() * 500000) + 500000,
+                    spot_sku_count: Math.floor(Math.random() * 100) + 150,
+                    stock_sku_count: Math.floor(Math.random() * 80) + 100,
+                    stock_spot_count: Math.floor(Math.random() * 70) + 90,
+                    stock_spot_rate: 0
+                },
+                {
+                    warehouse: '东莞仓',
+                    total_amt: Math.floor(Math.random() * 2000000) + 1500000,
+                    total_days: Math.floor(Math.random() * 15) + 30,
+                    self_instock_amt: Math.floor(Math.random() * 1000000) + 800000,
+                    self_instock_days: Math.floor(Math.random() * 12) + 28,
+                    avail_amt: Math.floor(Math.random() * 1500000) + 1000000,
+                    avail_days: Math.floor(Math.random() * 12) + 25,
+                    ship_amt: Math.floor(Math.random() * 1200000) + 800000,
+                    ship_days: Math.floor(Math.random() * 12) + 22,
+                    transit_normal_amt: Math.floor(Math.random() * 400000) + 300000,
+                    transit_normal_days: Math.floor(Math.random() * 6) + 8,
+                    transit_future_amt: Math.floor(Math.random() * 300000) + 150000,
+                    upper_limit_amt: Math.floor(Math.random() * 1500000) + 2000000,
+                    lower_limit_amt: Math.floor(Math.random() * 400000) + 400000,
+                    spot_sku_count: Math.floor(Math.random() * 80) + 100,
+                    stock_sku_count: Math.floor(Math.random() * 60) + 70,
+                    stock_spot_count: Math.floor(Math.random() * 55) + 65,
+                    stock_spot_rate: 0
+                },
+                {
+                    warehouse: '上银仓',
+                    total_amt: Math.floor(Math.random() * 1000000) + 800000,
+                    total_days: Math.floor(Math.random() * 12) + 20,
+                    self_instock_amt: Math.floor(Math.random() * 500000) + 400000,
+                    self_instock_days: Math.floor(Math.random() * 10) + 18,
+                    avail_amt: Math.floor(Math.random() * 800000) + 600000,
+                    avail_days: Math.floor(Math.random() * 10) + 16,
+                    ship_amt: Math.floor(Math.random() * 700000) + 500000,
+                    ship_days: Math.floor(Math.random() * 10) + 14,
+                    transit_normal_amt: Math.floor(Math.random() * 250000) + 150000,
+                    transit_normal_days: Math.floor(Math.random() * 5) + 5,
+                    transit_future_amt: Math.floor(Math.random() * 200000) + 100000,
+                    upper_limit_amt: Math.floor(Math.random() * 1000000) + 1000000,
+                    lower_limit_amt: Math.floor(Math.random() * 300000) + 200000,
+                    spot_sku_count: Math.floor(Math.random() * 50) + 60,
+                    stock_sku_count: Math.floor(Math.random() * 40) + 35,
+                    stock_spot_count: Math.floor(Math.random() * 35) + 32,
+                    stock_spot_rate: 0
+                }
+            ];
+
+            // 计算每个仓库的备货现货率
+            warehouses.forEach(wh => {
+                wh.stock_spot_rate = ((wh.stock_spot_count / wh.stock_sku_count) * 100).toFixed(1);
+            });
+
+            // 计算品牌汇总
+            const summary = {
+                brand: brand,
+                warehouse: '仓库汇总',
+                total_amt: warehouses.reduce((sum, wh) => sum + wh.total_amt, 0),
+                total_days: Math.round(warehouses.reduce((sum, wh) => sum + wh.total_days, 0) / warehouses.length),
+                self_instock_amt: warehouses.reduce((sum, wh) => sum + wh.self_instock_amt, 0),
+                self_instock_days: Math.round(warehouses.reduce((sum, wh) => sum + wh.self_instock_days, 0) / warehouses.length),
+                avail_amt: warehouses.reduce((sum, wh) => sum + wh.avail_amt, 0),
+                avail_days: Math.round(warehouses.reduce((sum, wh) => sum + wh.avail_days, 0) / warehouses.length),
+                ship_amt: warehouses.reduce((sum, wh) => sum + wh.ship_amt, 0),
+                ship_days: Math.round(warehouses.reduce((sum, wh) => sum + wh.ship_days, 0) / warehouses.length),
+                transit_normal_amt: warehouses.reduce((sum, wh) => sum + wh.transit_normal_amt, 0),
+                transit_normal_days: Math.round(warehouses.reduce((sum, wh) => sum + wh.transit_normal_days, 0) / warehouses.length),
+                transit_future_amt: warehouses.reduce((sum, wh) => sum + wh.transit_future_amt, 0),
+                upper_limit_amt: warehouses.reduce((sum, wh) => sum + wh.upper_limit_amt, 0),
+                lower_limit_amt: warehouses.reduce((sum, wh) => sum + wh.lower_limit_amt, 0),
+                spot_sku_count: warehouses.reduce((sum, wh) => sum + wh.spot_sku_count, 0),
+                stock_sku_count: warehouses.reduce((sum, wh) => sum + wh.stock_sku_count, 0),
+                stock_spot_count: warehouses.reduce((sum, wh) => sum + wh.stock_spot_count, 0),
+                stock_spot_rate: ((warehouses.reduce((sum, wh) => sum + wh.stock_spot_count, 0) / warehouses.reduce((sum, wh) => sum + wh.stock_sku_count, 0)) * 100).toFixed(1),
+                children: warehouses.map(wh => ({...wh, brand: brand})),
+                expanded: false
+            };
+
+            return summary;
+        });
+
+        // 按总库存金额降序排序
+        brandSummaryData.sort((a, b) => b.total_amt - a.total_amt);
+
+        // === 成本价格组维度汇总数据 ===
+        // 价格组与品牌的映射关系（一个成本价格组只能对应一个品牌，但一个品牌可以有多个价格组）
+        const costGroupBrandPairs = [
+            // 西门子有3个价格组
+            { costGroup: '价格组A', brand: '西门子 Siemens' },
+            { costGroup: '价格组B', brand: '西门子 Siemens' },
+            { costGroup: '价格组C', brand: '西门子 Siemens' },
+            // 施耐德有2个价格组
+            { costGroup: '价格组D', brand: '施耐德 Schneider' },
+            { costGroup: '价格组E', brand: '施耐德 Schneider' },
+            // 欧姆龙有2个价格组
+            { costGroup: '价格组F', brand: '欧姆龙 Omron' },
+            { costGroup: '价格组G', brand: '欧姆龙 Omron' },
+            // 3M有1个价格组
+            { costGroup: '价格组H', brand: '3M' },
+            // SMC有2个价格组
+            { costGroup: '价格组I', brand: 'SMC' },
+            { costGroup: '价格组J', brand: 'SMC' },
+            // 费斯托有1个价格组
+            { costGroup: '价格组K', brand: '费斯托 Festo' },
+            // ABB有2个价格组
+            { costGroup: '价格组L', brand: 'ABB' },
+            { costGroup: '价格组M', brand: 'ABB' },
+            // 台达有1个价格组
+            { costGroup: '价格组N', brand: '台达 Delta' },
+            // 霍尼韦尔有1个价格组
+            { costGroup: '价格组O', brand: '霍尼韦尔 Honeywell' },
+            // 力士乐有1个价格组
+            { costGroup: '价格组P', brand: '力士乐 Rexroth' },
+            // 倍加福有1个价格组
+            { costGroup: '价格组Q', brand: '倍加福 P+F' },
+            // 图尔克有1个价格组
+            { costGroup: '价格组R', brand: '图尔克 Turck' },
+            // 巴鲁夫有1个价格组
+            { costGroup: '价格组S', brand: '巴鲁夫 Balluff' },
+            // 魏德米勒有1个价格组
+            { costGroup: '价格组T', brand: '魏德米勒 Weidmuller' },
+            // 菲尼克斯有1个价格组
+            { costGroup: '价格组U', brand: '菲尼克斯 Phoenix Contact' }
+        ];
+
+        // 生成成本价格组维度数据
+        const costGroupSummaryData = [];
+        costGroupBrandPairs.forEach(pair => {
+            // 为每个价格组+品牌组合生成3个仓库的数据
+            const warehouses = [
+                    {
+                        warehouse: '华东中心仓',
+                        total_amt: Math.floor(Math.random() * 3000000) + 2000000,
+                        total_days: Math.floor(Math.random() * 20) + 40,
+                        self_instock_amt: Math.floor(Math.random() * 1500000) + 1000000,
+                        self_instock_days: Math.floor(Math.random() * 15) + 35,
+                        avail_amt: Math.floor(Math.random() * 2000000) + 1500000,
+                        avail_days: Math.floor(Math.random() * 15) + 30,
+                        ship_amt: Math.floor(Math.random() * 1800000) + 1200000,
+                        ship_days: Math.floor(Math.random() * 15) + 28,
+                        transit_normal_amt: Math.floor(Math.random() * 600000) + 400000,
+                        transit_normal_days: Math.floor(Math.random() * 8) + 10,
+                        transit_future_amt: Math.floor(Math.random() * 400000) + 200000,
+                        upper_limit_amt: Math.floor(Math.random() * 2000000) + 3000000,
+                        lower_limit_amt: Math.floor(Math.random() * 500000) + 500000,
+                        spot_sku_count: Math.floor(Math.random() * 100) + 150,
+                        stock_sku_count: Math.floor(Math.random() * 80) + 100,
+                        stock_spot_count: Math.floor(Math.random() * 70) + 90,
+                        stock_spot_rate: 0
+                    },
+                    {
+                        warehouse: '东莞仓',
+                        total_amt: Math.floor(Math.random() * 2000000) + 1500000,
+                        total_days: Math.floor(Math.random() * 15) + 30,
+                        self_instock_amt: Math.floor(Math.random() * 1000000) + 800000,
+                        self_instock_days: Math.floor(Math.random() * 12) + 28,
+                        avail_amt: Math.floor(Math.random() * 1500000) + 1000000,
+                        avail_days: Math.floor(Math.random() * 12) + 25,
+                        ship_amt: Math.floor(Math.random() * 1200000) + 800000,
+                        ship_days: Math.floor(Math.random() * 12) + 22,
+                        transit_normal_amt: Math.floor(Math.random() * 400000) + 300000,
+                        transit_normal_days: Math.floor(Math.random() * 6) + 8,
+                        transit_future_amt: Math.floor(Math.random() * 300000) + 150000,
+                        upper_limit_amt: Math.floor(Math.random() * 1500000) + 2000000,
+                        lower_limit_amt: Math.floor(Math.random() * 400000) + 400000,
+                        spot_sku_count: Math.floor(Math.random() * 80) + 100,
+                        stock_sku_count: Math.floor(Math.random() * 60) + 70,
+                        stock_spot_count: Math.floor(Math.random() * 55) + 65,
+                        stock_spot_rate: 0
+                    },
+                    {
+                        warehouse: '合肥上银仓',
+                        total_amt: Math.floor(Math.random() * 1000000) + 800000,
+                        total_days: Math.floor(Math.random() * 12) + 20,
+                        self_instock_amt: Math.floor(Math.random() * 500000) + 400000,
+                        self_instock_days: Math.floor(Math.random() * 10) + 18,
+                        avail_amt: Math.floor(Math.random() * 800000) + 600000,
+                        avail_days: Math.floor(Math.random() * 10) + 16,
+                        ship_amt: Math.floor(Math.random() * 700000) + 500000,
+                        ship_days: Math.floor(Math.random() * 10) + 14,
+                        transit_normal_amt: Math.floor(Math.random() * 250000) + 150000,
+                        transit_normal_days: Math.floor(Math.random() * 5) + 5,
+                        transit_future_amt: Math.floor(Math.random() * 200000) + 100000,
+                        upper_limit_amt: Math.floor(Math.random() * 1000000) + 1000000,
+                        lower_limit_amt: Math.floor(Math.random() * 300000) + 200000,
+                        spot_sku_count: Math.floor(Math.random() * 50) + 60,
+                        stock_sku_count: Math.floor(Math.random() * 40) + 35,
+                        stock_spot_count: Math.floor(Math.random() * 35) + 32,
+                        stock_spot_rate: 0
+                    }
+                ];
+
+                // 计算每个仓库的备货现货率
+                warehouses.forEach(wh => {
+                    wh.stock_spot_rate = ((wh.stock_spot_count / wh.stock_sku_count) * 100).toFixed(1);
+                });
+
+                // 计算价格组+品牌汇总
+                const summary = {
+                    costGroup: pair.costGroup,
+                    brand: pair.brand,
+                    warehouse: '仓库汇总',
+                    total_amt: warehouses.reduce((sum, wh) => sum + wh.total_amt, 0),
+                    total_days: Math.round(warehouses.reduce((sum, wh) => sum + wh.total_days, 0) / warehouses.length),
+                    self_instock_amt: warehouses.reduce((sum, wh) => sum + wh.self_instock_amt, 0),
+                    self_instock_days: Math.round(warehouses.reduce((sum, wh) => sum + wh.self_instock_days, 0) / warehouses.length),
+                    avail_amt: warehouses.reduce((sum, wh) => sum + wh.avail_amt, 0),
+                    avail_days: Math.round(warehouses.reduce((sum, wh) => sum + wh.avail_days, 0) / warehouses.length),
+                    ship_amt: warehouses.reduce((sum, wh) => sum + wh.ship_amt, 0),
+                    ship_days: Math.round(warehouses.reduce((sum, wh) => sum + wh.ship_days, 0) / warehouses.length),
+                    transit_normal_amt: warehouses.reduce((sum, wh) => sum + wh.transit_normal_amt, 0),
+                    transit_normal_days: Math.round(warehouses.reduce((sum, wh) => sum + wh.transit_normal_days, 0) / warehouses.length),
+                    transit_future_amt: warehouses.reduce((sum, wh) => sum + wh.transit_future_amt, 0),
+                    upper_limit_amt: warehouses.reduce((sum, wh) => sum + wh.upper_limit_amt, 0),
+                    lower_limit_amt: warehouses.reduce((sum, wh) => sum + wh.lower_limit_amt, 0),
+                    spot_sku_count: warehouses.reduce((sum, wh) => sum + wh.spot_sku_count, 0),
+                    stock_sku_count: warehouses.reduce((sum, wh) => sum + wh.stock_sku_count, 0),
+                    stock_spot_count: warehouses.reduce((sum, wh) => sum + wh.stock_spot_count, 0),
+                    stock_spot_rate: ((warehouses.reduce((sum, wh) => sum + wh.stock_spot_count, 0) / warehouses.reduce((sum, wh) => sum + wh.stock_sku_count, 0)) * 100).toFixed(1),
+                    children: warehouses.map(wh => ({...wh, costGroup: pair.costGroup, brand: pair.brand})),
+                    expanded: false
+                };
+
+                costGroupSummaryData.push(summary);
+        });
+
+        // 按总库存金额降序排序
+        costGroupSummaryData.sort((a, b) => b.total_amt - a.total_amt);
+
+        // 渲染仓库维度汇总表
+        function renderWarehouseSummary() {
+            let html = `
+                <thead>
+                    <tr>
+                        <th style="text-align:left; min-width:120px;">仓库</th>
+                        <th style="text-align:right">总库存金额（万）</th>
+                        <th style="text-align:center">总库存周转天数</th>
+                        <th style="text-align:right">自营在库金额（万）</th>
+                        <th style="text-align:center">自营在库周转天数</th>
+                        <th style="text-align:right">可用库存金额（万）</th>
+                        <th style="text-align:center">可用库存周转天数</th>
+                        <th style="text-align:right">可发库存金额（万）</th>
+                        <th style="text-align:center">可发库存周转天数</th>
+                        <th style="text-align:right">普通在途库存金额（万）</th>
+                        <th style="text-align:center">普通在途库存周转天数</th>
+                        <th style="text-align:right">期货在途库存金额（万）</th>
+                        <th style="text-align:right">实际上限总金额（万）</th>
+                        <th style="text-align:right">实际下限总金额（万）</th>
+                        <th style="text-align:center">现货SKU数_可发</th>
+                        <th style="text-align:center">备货SKU数</th>
+                        <th style="text-align:center">备货现货数</th>
+                        <th style="text-align:center">备货现货率</th>
+                    </tr>
+                </thead>
+                <tbody>
+            `;
+
+            // 渲染数据行
+            warehouseSummaryData.forEach(row => {
+                html += `<tr>`;
+                html += `<td style="text-align:left; min-width:120px;">${row.warehouse}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(row.total_amt)}</td>`;
+                html += `<td style="text-align:center">${row.total_days}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(row.self_instock_amt)}</td>`;
+                html += `<td style="text-align:center">${row.self_instock_days}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(row.avail_amt)}</td>`;
+                html += `<td style="text-align:center">${row.avail_days}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(row.ship_amt)}</td>`;
+                html += `<td style="text-align:center">${row.ship_days}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(row.transit_normal_amt)}</td>`;
+                html += `<td style="text-align:center">${row.transit_normal_days}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(row.transit_future_amt)}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(row.upper_limit_amt)}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(row.lower_limit_amt)}</td>`;
+                html += `<td style="text-align:center">${row.spot_sku_count}</td>`;
+                html += `<td style="text-align:center">${row.stock_sku_count}</td>`;
+                html += `<td style="text-align:center">${row.stock_spot_count}</td>`;
+                html += `<td style="text-align:center">${row.stock_spot_rate}%</td>`;
+                html += `</tr>`;
+            });
+
+            // 渲染汇总行
+            html += `<tr style="background:#fffbe6; font-weight:600;">`;
+            html += `<td style="text-align:left; min-width:120px;">${warehouseSummaryTotal.warehouse}</td>`;
+            html += `<td style="text-align:right">${formatAmtWan(warehouseSummaryTotal.total_amt)}</td>`;
+            html += `<td style="text-align:center">${warehouseSummaryTotal.total_days}</td>`;
+            html += `<td style="text-align:right">${formatAmtWan(warehouseSummaryTotal.self_instock_amt)}</td>`;
+            html += `<td style="text-align:center">${warehouseSummaryTotal.self_instock_days}</td>`;
+            html += `<td style="text-align:right">${formatAmtWan(warehouseSummaryTotal.avail_amt)}</td>`;
+            html += `<td style="text-align:center">${warehouseSummaryTotal.avail_days}</td>`;
+            html += `<td style="text-align:right">${formatAmtWan(warehouseSummaryTotal.ship_amt)}</td>`;
+            html += `<td style="text-align:center">${warehouseSummaryTotal.ship_days}</td>`;
+            html += `<td style="text-align:right">${formatAmtWan(warehouseSummaryTotal.transit_normal_amt)}</td>`;
+            html += `<td style="text-align:center">${warehouseSummaryTotal.transit_normal_days}</td>`;
+            html += `<td style="text-align:right">${formatAmtWan(warehouseSummaryTotal.transit_future_amt)}</td>`;
+            html += `<td style="text-align:right">${formatAmtWan(warehouseSummaryTotal.upper_limit_amt)}</td>`;
+            html += `<td style="text-align:right">${formatAmtWan(warehouseSummaryTotal.lower_limit_amt)}</td>`;
+            html += `<td style="text-align:center">${warehouseSummaryTotal.spot_sku_count}</td>`;
+            html += `<td style="text-align:center">${warehouseSummaryTotal.stock_sku_count}</td>`;
+            html += `<td style="text-align:center">${warehouseSummaryTotal.stock_spot_count}</td>`;
+            html += `<td style="text-align:center">${warehouseSummaryTotal.stock_spot_rate}%</td>`;
+            html += `</tr>`;
+
+            html += `</tbody>`;
+
+            document.getElementById('warehouse-summary-table').innerHTML = html;
+        }
+
+        // 初始化渲染汇总表
+        renderWarehouseSummary();
+
+        // 渲染品牌维度汇总表
+        function renderBrandSummary() {
+            let html = `
+                <thead>
+                    <tr>
+                        <th style="text-align:center; min-width:40px;"></th>
+                        <th style="text-align:left; min-width:150px;">品牌</th>
+                        <th style="text-align:left; min-width:120px;">仓库</th>
+                        <th style="text-align:right">总库存金额（万）</th>
+                        <th style="text-align:center">总库存周转天数</th>
+                        <th style="text-align:right">自营在库金额（万）</th>
+                        <th style="text-align:center">自营在库周转天数</th>
+                        <th style="text-align:right">可用库存金额（万）</th>
+                        <th style="text-align:center">可用库存周转天数</th>
+                        <th style="text-align:right">可发库存金额（万）</th>
+                        <th style="text-align:center">可发库存周转天数</th>
+                        <th style="text-align:right">普通在途库存金额（万）</th>
+                        <th style="text-align:center">普通在途库存周转天数</th>
+                        <th style="text-align:right">期货在途库存金额（万）</th>
+                        <th style="text-align:right">实际上限总金额（万）</th>
+                        <th style="text-align:right">实际下限总金额（万）</th>
+                        <th style="text-align:center">现货SKU数_可发</th>
+                        <th style="text-align:center">备货SKU数</th>
+                        <th style="text-align:center">备货现货数</th>
+                        <th style="text-align:center">备货现货率</th>
+                    </tr>
+                </thead>
+                <tbody>
+            `;
+
+            // 只显示前10个品牌
+            brandSummaryData.slice(0, 10).forEach((brand, index) => {
+                const isExpanded = brand.expanded;
+
+                // 父行（品牌汇总）
+                html += `<tr style="cursor:pointer; background:#fafafa;" onclick="toggleBrandExpand(${index})">`;
+                html += `<td style="text-align:center">
+                    <i class="fas fa-${isExpanded ? 'minus' : 'plus'}-square" style="color:#1677ff;"></i>
+                </td>`;
+                html += `<td style="text-align:left; font-weight:600;">${brand.brand}</td>`;
+                html += `<td style="text-align:left; color:#999;">${brand.warehouse}</td>`;
+                html += `<td style="text-align:right; font-weight:600;">${formatAmtWan(brand.total_amt)}</td>`;
+                html += `<td style="text-align:center">${brand.total_days}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(brand.self_instock_amt)}</td>`;
+                html += `<td style="text-align:center">${brand.self_instock_days}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(brand.avail_amt)}</td>`;
+                html += `<td style="text-align:center">${brand.avail_days}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(brand.ship_amt)}</td>`;
+                html += `<td style="text-align:center">${brand.ship_days}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(brand.transit_normal_amt)}</td>`;
+                html += `<td style="text-align:center">${brand.transit_normal_days}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(brand.transit_future_amt)}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(brand.upper_limit_amt)}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(brand.lower_limit_amt)}</td>`;
+                html += `<td style="text-align:center">${brand.spot_sku_count}</td>`;
+                html += `<td style="text-align:center">${brand.stock_sku_count}</td>`;
+                html += `<td style="text-align:center">${brand.stock_spot_count}</td>`;
+                html += `<td style="text-align:center">${brand.stock_spot_rate}%</td>`;
+                html += `</tr>`;
+
+                // 子行（仓库明细）
+                if (isExpanded) {
+                    brand.children.forEach(wh => {
+                        html += `<tr style="background:#fff;">`;
+                        html += `<td></td>`;
+                        html += `<td style="padding-left:24px; color:#999;"><span style="font-size:12px;">└</span></td>`;
+                        html += `<td style="text-align:left;">${wh.warehouse}</td>`;
+                        html += `<td style="text-align:right">${formatAmtWan(wh.total_amt)}</td>`;
+                        html += `<td style="text-align:center">${wh.total_days}</td>`;
+                        html += `<td style="text-align:right">${formatAmtWan(wh.self_instock_amt)}</td>`;
+                        html += `<td style="text-align:center">${wh.self_instock_days}</td>`;
+                        html += `<td style="text-align:right">${formatAmtWan(wh.avail_amt)}</td>`;
+                        html += `<td style="text-align:center">${wh.avail_days}</td>`;
+                        html += `<td style="text-align:right">${formatAmtWan(wh.ship_amt)}</td>`;
+                        html += `<td style="text-align:center">${wh.ship_days}</td>`;
+                        html += `<td style="text-align:right">${formatAmtWan(wh.transit_normal_amt)}</td>`;
+                        html += `<td style="text-align:center">${wh.transit_normal_days}</td>`;
+                        html += `<td style="text-align:right">${formatAmtWan(wh.transit_future_amt)}</td>`;
+                        html += `<td style="text-align:right">${formatAmtWan(wh.upper_limit_amt)}</td>`;
+                        html += `<td style="text-align:right">${formatAmtWan(wh.lower_limit_amt)}</td>`;
+                        html += `<td style="text-align:center">${wh.spot_sku_count}</td>`;
+                        html += `<td style="text-align:center">${wh.stock_sku_count}</td>`;
+                        html += `<td style="text-align:center">${wh.stock_spot_count}</td>`;
+                        html += `<td style="text-align:center">${wh.stock_spot_rate}%</td>`;
+                        html += `</tr>`;
+                    });
+                }
+            });
+
+            html += `</tbody>`;
+
+            document.getElementById('brand-summary-table').innerHTML = html;
+        }
+
+        // 切换品牌展开/收起
+        function toggleBrandExpand(index) {
+            brandSummaryData[index].expanded = !brandSummaryData[index].expanded;
+            renderBrandSummary();
+        }
+
+        // 全部展开/折叠品牌
+        let allBrandExpanded = false;
+        function toggleAllBrandExpand() {
+            allBrandExpanded = !allBrandExpanded;
+            brandSummaryData.forEach(brand => {
+                brand.expanded = allBrandExpanded;
+            });
+            renderBrandSummary();
+
+            // 更新按钮文字和图标
+            const btn = document.getElementById('toggle-all-brand-btn');
+            if (allBrandExpanded) {
+                btn.innerHTML = '<i class="fas fa-minus-square"></i> 全部收起';
+            } else {
+                btn.innerHTML = '<i class="fas fa-plus-square"></i> 全部展开';
+            }
+        }
+
+        // === 成本价格组维度渲染 ===
+        // 渲染成本价格组维度汇总表
+        function renderCostGroupSummary() {
+            let html = `
+                <thead>
+                    <tr>
+                        <th style="text-align:center; min-width:40px;"></th>
+                        <th style="text-align:left; min-width:120px;">成本价格组</th>
+                        <th style="text-align:left; min-width:150px;">品牌</th>
+                        <th style="text-align:left; min-width:120px;">仓库</th>
+                        <th style="text-align:right">总库存金额（万）</th>
+                        <th style="text-align:center">总库存周转天数</th>
+                        <th style="text-align:right">自营在库金额（万）</th>
+                        <th style="text-align:center">自营在库周转天数</th>
+                        <th style="text-align:right">可用库存金额（万）</th>
+                        <th style="text-align:center">可用库存周转天数</th>
+                        <th style="text-align:right">可发库存金额（万）</th>
+                        <th style="text-align:center">可发库存周转天数</th>
+                        <th style="text-align:right">普通在途库存金额（万）</th>
+                        <th style="text-align:center">普通在途库存周转天数</th>
+                        <th style="text-align:right">期货在途库存金额（万）</th>
+                        <th style="text-align:right">实际上限总金额（万）</th>
+                        <th style="text-align:right">实际下限总金额（万）</th>
+                        <th style="text-align:center">现货SKU数_可发</th>
+                        <th style="text-align:center">备货SKU数</th>
+                        <th style="text-align:center">备货现货数</th>
+                        <th style="text-align:center">备货现货率</th>
+                    </tr>
+                </thead>
+                <tbody>
+            `;
+
+            // 只显示前10个
+            costGroupSummaryData.slice(0, 10).forEach((item, index) => {
+                const isExpanded = item.expanded;
+
+                // 父行（价格组+品牌汇总）
+                html += `<tr style="cursor:pointer; background:#fafafa;" onclick="toggleCostGroupExpand(${index})">`;
+                html += `<td style="text-align:center">
+                    <i class="fas fa-${isExpanded ? 'minus' : 'plus'}-square" style="color:#1677ff;"></i>
+                </td>`;
+                html += `<td style="text-align:left; font-weight:600;">${item.costGroup}</td>`;
+                html += `<td style="text-align:left; font-weight:600;">${item.brand}</td>`;
+                html += `<td style="text-align:left; color:#999;">${item.warehouse}</td>`;
+                html += `<td style="text-align:right; font-weight:600;">${formatAmtWan(item.total_amt)}</td>`;
+                html += `<td style="text-align:center">${item.total_days}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(item.self_instock_amt)}</td>`;
+                html += `<td style="text-align:center">${item.self_instock_days}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(item.avail_amt)}</td>`;
+                html += `<td style="text-align:center">${item.avail_days}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(item.ship_amt)}</td>`;
+                html += `<td style="text-align:center">${item.ship_days}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(item.transit_normal_amt)}</td>`;
+                html += `<td style="text-align:center">${item.transit_normal_days}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(item.transit_future_amt)}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(item.upper_limit_amt)}</td>`;
+                html += `<td style="text-align:right">${formatAmtWan(item.lower_limit_amt)}</td>`;
+                html += `<td style="text-align:center">${item.spot_sku_count}</td>`;
+                html += `<td style="text-align:center">${item.stock_sku_count}</td>`;
+                html += `<td style="text-align:center">${item.stock_spot_count}</td>`;
+                html += `<td style="text-align:center">${item.stock_spot_rate}%</td>`;
+                html += `</tr>`;
+
+                // 子行（仓库明细）
+                if (isExpanded) {
+                    item.children.forEach(wh => {
+                        html += `<tr style="background:#fff;">`;
+                        html += `<td></td>`;
+                        html += `<td style="padding-left:24px; color:#999;"><span style="font-size:12px;">└</span></td>`;
+                        html += `<td style="padding-left:24px; color:#999;"><span style="font-size:12px;">└</span></td>`;
+                        html += `<td style="text-align:left;">${wh.warehouse}</td>`;
+                        html += `<td style="text-align:right">${formatAmtWan(wh.total_amt)}</td>`;
+                        html += `<td style="text-align:center">${wh.total_days}</td>`;
+                        html += `<td style="text-align:right">${formatAmtWan(wh.self_instock_amt)}</td>`;
+                        html += `<td style="text-align:center">${wh.self_instock_days}</td>`;
+                        html += `<td style="text-align:right">${formatAmtWan(wh.avail_amt)}</td>`;
+                        html += `<td style="text-align:center">${wh.avail_days}</td>`;
+                        html += `<td style="text-align:right">${formatAmtWan(wh.ship_amt)}</td>`;
+                        html += `<td style="text-align:center">${wh.ship_days}</td>`;
+                        html += `<td style="text-align:right">${formatAmtWan(wh.transit_normal_amt)}</td>`;
+                        html += `<td style="text-align:center">${wh.transit_normal_days}</td>`;
+                        html += `<td style="text-align:right">${formatAmtWan(wh.transit_future_amt)}</td>`;
+                        html += `<td style="text-align:right">${formatAmtWan(wh.upper_limit_amt)}</td>`;
+                        html += `<td style="text-align:right">${formatAmtWan(wh.lower_limit_amt)}</td>`;
+                        html += `<td style="text-align:center">${wh.spot_sku_count}</td>`;
+                        html += `<td style="text-align:center">${wh.stock_sku_count}</td>`;
+                        html += `<td style="text-align:center">${wh.stock_spot_count}</td>`;
+                        html += `<td style="text-align:center">${wh.stock_spot_rate}%</td>`;
+                        html += `</tr>`;
+                    });
+                }
+            });
+
+            html += `</tbody>`;
+
+            document.getElementById('costgroup-summary-table').innerHTML = html;
+        }
+
+        // 切换价格组展开/收起
+        function toggleCostGroupExpand(index) {
+            costGroupSummaryData[index].expanded = !costGroupSummaryData[index].expanded;
+            renderCostGroupSummary();
+        }
+
+        // 全部展开/折叠价格组
+        let allCostGroupExpanded = false;
+        function toggleAllCostGroupExpand() {
+            allCostGroupExpanded = !allCostGroupExpanded;
+            costGroupSummaryData.forEach(item => {
+                item.expanded = allCostGroupExpanded;
+            });
+            renderCostGroupSummary();
+
+            // 更新按钮文字和图标
+            const btn = document.getElementById('toggle-all-costgroup-btn');
+            if (allCostGroupExpanded) {
+                btn.innerHTML = '<i class="fas fa-minus-square"></i> 全部收起';
+            } else {
+                btn.innerHTML = '<i class="fas fa-plus-square"></i> 全部展开';
+            }
+        }
+
+        // 暴露函数到全局
+        window.switchListView = switchListView;
+        window.switchSummaryDimension = switchSummaryDimension;
+        window.toggleBrandExpand = toggleBrandExpand;
+        window.toggleAllBrandExpand = toggleAllBrandExpand;
+        window.toggleCostGroupExpand = toggleCostGroupExpand;
+        window.toggleAllCostGroupExpand = toggleAllCostGroupExpand;
+        window.switchTimeDimension = switchTimeDimension;
+
+        // 页面加载完成后初始化趋势图
+        window.addEventListener('load', function() {
+            initKpiTrends();
+        });
+
+    </script>
+</body>
+
+</html>
